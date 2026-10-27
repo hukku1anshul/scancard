@@ -3,7 +3,7 @@
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const DEMO_CARD_INDIA = {
+export const DEMO_CARD_INDIA = {
   fullName: 'Rajesh Deshmukh',
   firstName: 'Rajesh',
   lastName: 'Deshmukh',
@@ -27,7 +27,7 @@ const DEMO_CARD_INDIA = {
   confidence: 0.98,
 };
 
-const DEMO_DOSSIER_INDIA = {
+export const DEMO_DOSSIER_INDIA = {
   company: {
     name: 'Bharat Precision Engg. Pvt. Ltd.',
     legalName: 'BHARAT PRECISION ENGINEERING PRIVATE LIMITED',
