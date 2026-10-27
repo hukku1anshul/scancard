@@ -375,38 +375,38 @@ export default function DossierView({
         </div>
 
         {record.demo && (
-          <div className="mb-3 rounded-xl border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-            Demo data (fictional Indian MCA/GST dossier). Add a Gemini key in Settings for live results.
+          <div className="mb-2.5 rounded-xl border border-amber-400/20 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-200">
+            Demo Indian dossier preview. Configure server Gemini key for live data.
           </div>
         )}
 
-        <div className="relative overflow-hidden rounded-3xl border border-white/15 bg-gradient-to-br from-indigo-900/40 via-ink-850 to-fuchsia-900/30 p-5 shadow-2xl backdrop-blur-md">
-          <div className="flex items-start gap-4">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-lg font-bold shadow-lg shadow-indigo-500/20">
+        <div className="relative overflow-hidden rounded-3xl border border-white/[0.08] bg-ink-900 p-4 shadow-xl">
+          <div className="flex items-start gap-3.5">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-indigo-600 text-base font-bold text-white shadow-md shadow-indigo-600/30">
               {initials(card.fullName || companyName)}
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="truncate text-xl font-bold tracking-tight text-white">{card.fullName || companyName}</h1>
+                <h1 className="truncate text-lg font-bold tracking-tight text-white">{card.fullName || companyName}</h1>
                 {d?.kyc ? (
                   <span
-                    className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
                       d.kyc.tier === 'verified'
-                        ? 'border-emerald-400/40 bg-emerald-500/20 text-emerald-300 shadow-sm'
+                        ? 'border-emerald-400/30 bg-emerald-500/15 text-emerald-300'
                         : d.kyc.tier === 'review'
-                        ? 'border-amber-400/40 bg-amber-500/20 text-amber-300'
-                        : 'border-sky-400/40 bg-sky-500/20 text-sky-300'
+                        ? 'border-amber-400/30 bg-amber-500/15 text-amber-300'
+                        : 'border-sky-400/30 bg-sky-500/15 text-sky-300'
                     }`}
                   >
-                    <ShieldCheck className="h-3.5 w-3.5" />
-                    KYC {d.kyc.score}/100 · {d.kyc.tier}
+                    <ShieldCheck className="h-3 w-3" />
+                    {d.kyc.score}/100 · {d.kyc.tier}
                   </span>
                 ) : (
                   d?.identity?.company && <IdentityBadge level={d.identity.company.level} title={d.identity.company.reasons.join('\n')} />
                 )}
               </div>
-              <p className="text-sm font-medium text-slate-300">{card.jobTitle || d?.person.title}</p>
-              <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-indigo-200">
+              <p className="text-xs font-medium text-slate-300">{card.jobTitle || d?.person.title}</p>
+              <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-indigo-300">
                 <Building2 className="h-3.5 w-3.5 text-indigo-400" />
                 <span className="font-semibold">{companyName}</span>
                 {d?.company.legalName && d.company.legalName !== companyName && (
@@ -414,24 +414,24 @@ export default function DossierView({
                 )}
               </p>
             </div>
-            {d?.company.logo && <img src={d.company.logo} alt="" className="h-11 w-11 shrink-0 rounded-xl bg-white object-contain p-1 shadow-md" />}
+            {d?.company.logo && <img src={d.company.logo} alt="" className="h-10 w-10 shrink-0 rounded-xl bg-white object-contain p-1 shadow-sm" />}
           </div>
 
-          {/* Event, Booth, GPS Location & Statutory Context Pills */}
-          <div className="mt-3.5 flex flex-wrap items-center gap-1.5 text-xs">
+          {/* Event, Booth, GPS & Statutory Tags */}
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs">
             {record.event ? (
               <button
                 onClick={() => setTab('notes')}
-                className="inline-flex items-center gap-1 rounded-full border border-indigo-400/30 bg-indigo-500/20 px-2.5 py-1 text-indigo-200 hover:bg-indigo-500/30 transition"
+                className="inline-flex items-center gap-1 rounded-full border border-indigo-400/30 bg-indigo-500/15 px-2.5 py-0.5 text-indigo-200 hover:bg-indigo-500/25 transition active:scale-95"
               >
                 <Calendar className="h-3 w-3" /> {record.event}{record.booth ? ` · ${record.booth}` : ''}
               </button>
             ) : (
               <button
                 onClick={() => setTab('notes')}
-                className="inline-flex items-center gap-1 rounded-full border border-dashed border-white/15 bg-white/5 px-2.5 py-1 text-slate-400 hover:text-slate-200 transition"
+                className="inline-flex items-center gap-1 rounded-full border border-dashed border-white/15 bg-white/5 px-2.5 py-0.5 text-slate-400 hover:text-slate-200 transition active:scale-95"
               >
-                <Calendar className="h-3 w-3" /> + Add Event / Stall
+                <Calendar className="h-3 w-3" /> + Event / Stall
               </button>
             )}
 
@@ -440,8 +440,8 @@ export default function DossierView({
                 href={locHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-500/15 px-2.5 py-1 text-emerald-200 hover:bg-emerald-500/25 transition"
-                title="Open scan GPS location in Google Maps"
+                className="inline-flex items-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-500/15 px-2.5 py-0.5 text-emerald-200 hover:bg-emerald-500/25 transition"
+                title="Google Maps"
               >
                 <MapPin className="h-3 w-3" /> {record.location.label}
               </a>
@@ -449,30 +449,23 @@ export default function DossierView({
               <button
                 onClick={handleCaptureGps}
                 disabled={geoBusy}
-                className="inline-flex items-center gap-1 rounded-full border border-dashed border-white/15 bg-white/5 px-2.5 py-1 text-slate-400 hover:text-slate-200 transition"
+                className="inline-flex items-center gap-1 rounded-full border border-dashed border-white/15 bg-white/5 px-2.5 py-0.5 text-slate-400 hover:text-slate-200 transition active:scale-95"
               >
-                {geoBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <LocateFixed className="h-3 w-3" />} + Tag GPS Location
+                {geoBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <LocateFixed className="h-3 w-3" />} + GPS
               </button>
             )}
 
             {gstin && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/30 bg-amber-500/15 px-2.5 py-1 font-mono text-[11px] text-amber-200">
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/30 bg-amber-500/15 px-2.5 py-0.5 font-mono text-[10px] text-amber-200">
                 GST: {gstin}
               </span>
             )}
 
             {cin && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-sky-400/30 bg-sky-500/15 px-2.5 py-1 font-mono text-[11px] text-sky-200">
+              <span className="inline-flex items-center gap-1 rounded-full border border-sky-400/30 bg-sky-500/15 px-2.5 py-0.5 font-mono text-[10px] text-sky-200">
                 CIN: {cin}
               </span>
             )}
-
-            <button
-              onClick={() => setTab('notes')}
-              className="inline-flex items-center gap-1 rounded-full border border-fuchsia-400/30 bg-fuchsia-500/15 px-2.5 py-1 text-fuchsia-200 hover:bg-fuchsia-500/25 transition"
-            >
-              <UserPlus className="h-3 w-3" /> + Colleague / Note
-            </button>
           </div>
 
           {/* Priority selector bar */}
@@ -486,7 +479,7 @@ export default function DossierView({
                 <button
                   key={p.id}
                   onClick={() => onUpdateRecord({ priority: active ? null : p.id })}
-                  className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition ${
+                  className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition active:scale-95 ${
                     active ? p.cls : 'border-white/10 bg-white/5 text-slate-400 hover:text-slate-200'
                   }`}
                 >
@@ -496,44 +489,44 @@ export default function DossierView({
             })}
             {record.dealValue && (
               <span className="ml-auto rounded-full border border-emerald-400/30 bg-emerald-500/20 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-200 shrink-0">
-                Deal: {record.dealValue}
+                {record.dealValue}
               </span>
             )}
           </div>
 
           {d?.company.industry && (
-            <div className="mt-3">
+            <div className="mt-2.5">
               <Chips items={[d.company.industry, d.company.businessModel, d.company.headquarters].filter(Boolean) as string[]} tone="indigo" />
             </div>
           )}
 
-          {/* 5-Button Action Bar with 1-Tap WhatsApp */}
-          <div className="mt-4 grid grid-cols-5 gap-1.5">
+          {/* 5-Button Thumb Action Bar */}
+          <div className="mt-3.5 grid grid-cols-5 gap-1.5">
             <ActionBtn icon={<UserPlus className="h-5 w-5" />} label="Save" onClick={() => shareOrDownloadVCard(card, d, record)} primary />
-            <ActionBtn icon={<MessageSquare className="h-5 w-5 text-emerald-300" />} label="WhatsApp" href={waQuickHref} />
+            <ActionBtn icon={<MessageSquare className="h-5 w-5 text-emerald-400" />} label="WhatsApp" href={waQuickHref} />
             <ActionBtn icon={<Phone className="h-5 w-5" />} label="Call" href={card.phones[0] ? `tel:${(phoneV(card.phones[0].number)?.e164 || card.phones[0].number).replace(/[^\d+]/g, '')}` : undefined} />
             <ActionBtn icon={<Mail className="h-5 w-5" />} label="Email" href={card.emails[0] ? `mailto:${card.emails[0]}` : undefined} />
-            <ActionBtn icon={<Send className="h-5 w-5" />} label="CRM" onClick={() => setCrmOpen(true)} />
+            <ActionBtn icon={<Send className="h-5 w-5 text-indigo-400" />} label="CRM" onClick={() => setCrmOpen(true)} />
           </div>
 
           {/* Quick PDF Report & Calendar Action Strip */}
-          <div className="mt-3 flex items-center justify-between border-t border-white/10 pt-2.5 text-xs">
+          <div className="mt-2.5 flex items-center justify-between border-t border-white/[0.08] pt-2 text-xs">
             <a
               href={`/api/export/report/${record.id}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-slate-300 hover:bg-white/10 hover:text-white transition"
+              className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-slate-300 hover:bg-white/10 hover:text-white transition"
               title="Download print-ready Executive PDF report"
             >
-              <Printer className="h-3.5 w-3.5 text-indigo-400" /> PDF Report
+              <Printer className="h-3 w-3 text-indigo-400" /> Export PDF
             </a>
             <button
               type="button"
               onClick={() => downloadCalendarReminder(record)}
-              className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-slate-300 hover:bg-white/10 hover:text-white transition"
+              className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-slate-300 hover:bg-white/10 hover:text-white transition"
               title="Download iCal reminder event for follow-up"
             >
-              <Calendar className="h-3.5 w-3.5 text-fuchsia-400" /> + Reminder (.ics)
+              <Calendar className="h-3 w-3 text-indigo-400" /> + Reminder (.ics)
             </button>
           </div>
           {d?.cachedAt && (

@@ -367,37 +367,36 @@ export default function App() {
 
   return (
     <div className="mx-auto flex min-h-full max-w-xl flex-col">
-      <header className="safe-top sticky top-0 z-20 border-b border-white/10 bg-ink-950/85 backdrop-blur-md">
-        <div className="flex items-center gap-2.5 px-4 py-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 via-indigo-600 to-fuchsia-500 shadow-md shadow-indigo-500/20">
-            <Sparkles className="h-4.5 w-4.5 text-white" />
+      <header className="safe-top sticky top-0 z-20 border-b border-white/[0.08] bg-ink-950/90 backdrop-blur-md">
+        <div className="flex items-center gap-2.5 px-3.5 py-2.5 max-w-xl mx-auto">
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-600 shadow-sm shadow-indigo-600/30">
+            <Sparkles className="h-4 w-4 text-white" />
           </div>
           <div className="leading-tight">
             <div className="flex items-center gap-1.5">
               <span className="text-sm font-bold tracking-tight text-white">CardIntel</span>
               {!demoMode ? (
-                <span className="flex items-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-500/15 px-1.5 py-0.2 text-[9px] font-semibold text-emerald-300">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live AI
+                <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Live AI
                 </span>
               ) : (
-                <span className="rounded-full border border-amber-400/30 bg-amber-500/15 px-1.5 py-0.2 text-[9px] font-semibold text-amber-300">
-                  Demo
+                <span className="flex items-center gap-1 text-[10px] font-medium text-amber-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> Demo
                 </span>
               )}
             </div>
-            <div className="text-[11px] text-slate-400 truncate max-w-[200px]">{title[view]}</div>
+            <div className="text-[10px] text-slate-400 truncate max-w-[180px]">{title[view]}</div>
           </div>
           <div className="ml-auto flex items-center gap-1.5">
             <button
               onClick={() => setMyQrOpen(true)}
-              className="flex items-center gap-1 rounded-full border border-indigo-400/40 bg-indigo-500/15 px-2.5 py-1 text-[11px] font-medium text-indigo-200 transition hover:bg-indigo-500/25 active:scale-95 shadow-sm"
+              className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-slate-200 transition hover:bg-white/10 active:scale-95"
               title="Show My Digital Business Card QR"
             >
-              <QrCode className="h-3.5 w-3.5 text-indigo-300" /> My Card
+              <QrCode className="h-3.5 w-3.5 text-indigo-400" /> My Card
             </button>
             {queueCount > 0 && (
-              <span className="flex items-center gap-1 rounded-full border border-indigo-400/30 bg-indigo-500/20 px-2 py-0.5 text-[10px] font-medium text-indigo-200">
-                <span className="h-1.5 w-1.5 rounded-full bg-indigo-400 animate-ping" />
+              <span className="flex items-center gap-1 rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-bold text-white shadow">
                 {queueCount}
               </span>
             )}
@@ -518,11 +517,11 @@ export default function App() {
         </div>
       )}
 
-      <nav className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-ink-950/90 shadow-2xl backdrop-blur-lg">
-        <div className="mx-auto grid max-w-xl grid-cols-3 px-2 py-1">
+      <nav className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-white/[0.08] bg-ink-950/95 shadow-2xl backdrop-blur-xl">
+        <div className="mx-auto grid max-w-xl grid-cols-3 px-3 py-1.5">
           {([
             ['scan', 'Scan', ScanLine],
-            ['history', 'History & ROI', HistoryIcon],
+            ['history', 'Cards & ROI', HistoryIcon],
             ['settings', 'Settings', SettingsIcon],
           ] as const).map(([id, label, Icon]) => {
             const active = view === id || (id === 'scan' && view === 'processing') || (id === 'history' && view === 'dossier');
@@ -530,20 +529,20 @@ export default function App() {
               <button
                 key={id}
                 onClick={() => nav(id)}
-                className={`relative flex flex-col items-center gap-1 py-2 text-[11px] font-medium transition-all ${
-                  active ? 'text-indigo-300' : 'text-slate-400 hover:text-slate-200'
+                className={`relative flex flex-col items-center justify-center gap-1 py-1.5 text-xs font-semibold transition-all active:scale-95 ${
+                  active ? 'text-white' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
                 <div
                   className={`flex h-8 w-14 items-center justify-center rounded-xl transition-all ${
-                    active ? 'bg-indigo-500/25 border border-indigo-400/40 shadow-sm text-indigo-200' : 'bg-transparent text-slate-400'
+                    active ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30' : 'bg-transparent text-slate-400'
                   }`}
                 >
-                  <Icon className="h-5 w-5" />
+                  <Icon className="h-4.5 w-4.5" />
                 </div>
-                <span>{label}</span>
+                <span className="text-[11px]">{label}</span>
                 {id === 'history' && queueCount > 0 && (
-                  <span className="absolute right-[24%] top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-indigo-500 px-1 text-[9px] font-bold text-white shadow">
+                  <span className="absolute right-[24%] top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-indigo-500 px-1 text-[9px] font-bold text-white shadow">
                     {queueCount}
                   </span>
                 )}
