@@ -10,7 +10,7 @@ import MyDigitalCardModal from './components/MyDigitalCardModal';
 import ShareTargetSheet, { type SharedLink } from './components/ShareTargetSheet';
 import { fetchHealth, pushToCrm, streamScan, type ScanPayload } from './lib/api';
 import { prepareImage } from './lib/image';
-import { loadHistory, loadSettings, saveHistory, saveSettings, uid } from './lib/storage';
+import { applyServerDefaults, loadHistory, loadSettings, saveHistory, saveSettings, uid } from './lib/storage';
 import type { Card, ContactRole, DossierTab, Health, MeetingNote, ScanLocation, ScanRecord, Settings, StepId, StepState } from './types';
 
 type View = 'scan' | 'processing' | 'dossier' | 'history' | 'settings';
@@ -118,15 +118,24 @@ export default function App() {
 
   useEffect(() => saveHistory(history), [history]);
   useEffect(() => {
-    fetchHealth(settings).then(setHealth);
-  }, [settings]);
+    fetchHealth().then((h) => {
+      setHealth(h);
+      if (h?.defaults) {
+        setSettings((prev) => {
+          const merged = applyServerDefaults(prev, h.defaults);
+          saveSettings(merged);
+          return merged;
+        });
+      }
+    });
+  }, []);
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 2800);
     return () => clearTimeout(t);
   }, [toast]);
 
-  const demoMode = health ? !health.gemini : !settings.geminiKey;
+  const demoMode = health ? !health.gemini : false;
   const patchRecord = useCallback((id: string, patch: Partial<ScanRecord>) => {
     setHistory((h) => h.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   }, []);

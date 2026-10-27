@@ -189,12 +189,12 @@ export default function ScanView({
   return (
     <div className="space-y-4 px-4 pb-6 pt-2">
       {demoMode && (
-        <button onClick={onOpenSettings} className="flex w-full items-start gap-3 rounded-2xl border border-amber-400/20 bg-amber-500/10 p-3 text-left text-sm text-amber-100">
+        <div className="flex w-full items-start gap-3 rounded-2xl border border-amber-400/20 bg-amber-500/10 p-3 text-left text-sm text-amber-100">
           <Sparkles className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
-            <b>Demo mode.</b> Scans return a rich Indian MCA/GST sample dossier. Tap here to add your Gemini API key and scan real cards.
+            <b>Server Demo Mode.</b> Live AI is not yet configured on the server. Set <code>GEMINI_API_KEY</code> in your Render server Environment Variables to enable live scanning for all users.
           </span>
-        </button>
+        </div>
       )}
 
       {/* Event, Booth/Stall, GPS Location & Quick Follow-up Checklist Bar */}

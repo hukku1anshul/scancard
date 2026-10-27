@@ -189,20 +189,6 @@ export interface ScanRecord {
 }
 
 export interface Settings {
-  geminiKey: string;
-  geminiModel: string;
-  grounding: boolean;
-  tavilyKey: string;
-  serpapiKey: string;
-  companiesHouseKey: string;
-  openCorporatesToken: string;
-  dnbKey: string;
-  dnbSecret: string;
-  apolloKey: string;
-  pdlKey: string;
-  hubspotToken: string;
-  sfInstanceUrl: string;
-  sfAccessToken: string;
   eventMode: boolean;
   defaultEvent: string;
   autoGeo: boolean;
@@ -215,6 +201,19 @@ export interface Settings {
   senderGstin: string;
 }
 
+export interface ServerDefaults {
+  eventMode?: boolean;
+  defaultEvent?: string;
+  autoGeo?: boolean;
+  senderName?: string;
+  senderCompany?: string;
+  senderPhone?: string;
+  senderEmail?: string;
+  senderWebsite?: string;
+  senderLinkedin?: string;
+  senderGstin?: string;
+}
+
 export interface Health {
   ok: boolean;
   gemini: boolean;
@@ -224,6 +223,7 @@ export interface Health {
   registries: string[];
   providers: string[];
   crm: string[];
+  defaults?: ServerDefaults;
 }
 
 export interface CrmResult {

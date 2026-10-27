@@ -1,23 +1,9 @@
-import type { ScanRecord, Settings } from '../types';
+import type { ScanRecord, ServerDefaults, Settings } from '../types';
 
 const HISTORY_KEY = 'cardintel.history.v1';
-const SETTINGS_KEY = 'cardintel.settings.v1';
+const SETTINGS_KEY = 'cardintel.settings.v2';
 
 export const DEFAULT_SETTINGS: Settings = {
-  geminiKey: '',
-  geminiModel: 'gemini-2.5-flash',
-  grounding: true,
-  tavilyKey: '',
-  serpapiKey: '',
-  companiesHouseKey: '',
-  openCorporatesToken: '',
-  dnbKey: '',
-  dnbSecret: '',
-  apolloKey: '',
-  pdlKey: '',
-  hubspotToken: '',
-  sfInstanceUrl: '',
-  sfAccessToken: '',
   eventMode: false,
   defaultEvent: '',
   autoGeo: true,
@@ -32,10 +18,37 @@ export const DEFAULT_SETTINGS: Settings = {
 
 export function loadSettings(): Settings {
   try {
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') };
+    const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) || localStorage.getItem('cardintel.settings.v1') || '{}');
+    return {
+      eventMode: typeof raw.eventMode === 'boolean' ? raw.eventMode : DEFAULT_SETTINGS.eventMode,
+      defaultEvent: typeof raw.defaultEvent === 'string' ? raw.defaultEvent : DEFAULT_SETTINGS.defaultEvent,
+      autoGeo: typeof raw.autoGeo === 'boolean' ? raw.autoGeo : DEFAULT_SETTINGS.autoGeo,
+      senderName: typeof raw.senderName === 'string' ? raw.senderName : DEFAULT_SETTINGS.senderName,
+      senderCompany: typeof raw.senderCompany === 'string' ? raw.senderCompany : DEFAULT_SETTINGS.senderCompany,
+      senderPhone: typeof raw.senderPhone === 'string' ? raw.senderPhone : DEFAULT_SETTINGS.senderPhone,
+      senderEmail: typeof raw.senderEmail === 'string' ? raw.senderEmail : DEFAULT_SETTINGS.senderEmail,
+      senderWebsite: typeof raw.senderWebsite === 'string' ? raw.senderWebsite : DEFAULT_SETTINGS.senderWebsite,
+      senderLinkedin: typeof raw.senderLinkedin === 'string' ? raw.senderLinkedin : DEFAULT_SETTINGS.senderLinkedin,
+      senderGstin: typeof raw.senderGstin === 'string' ? raw.senderGstin : DEFAULT_SETTINGS.senderGstin,
+    };
   } catch {
     return DEFAULT_SETTINGS;
   }
+}
+
+export function applyServerDefaults(current: Settings, defaults?: ServerDefaults): Settings {
+  if (!defaults) return current;
+  return {
+    ...current,
+    defaultEvent: current.defaultEvent || defaults.defaultEvent || '',
+    senderName: current.senderName || defaults.senderName || '',
+    senderCompany: current.senderCompany || defaults.senderCompany || '',
+    senderPhone: current.senderPhone || defaults.senderPhone || '',
+    senderEmail: current.senderEmail || defaults.senderEmail || '',
+    senderWebsite: current.senderWebsite || defaults.senderWebsite || '',
+    senderLinkedin: current.senderLinkedin || defaults.senderLinkedin || '',
+    senderGstin: current.senderGstin || defaults.senderGstin || '',
+  };
 }
 
 export function saveSettings(s: Settings) {

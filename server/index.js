@@ -69,6 +69,11 @@ app.get(/^\/(?!api\/).*/, (req, res) => {
 
 const port = Number(process.env.PORT) || 8787;
 app.listen(port, () => {
+  const cfg = resolveConfig();
   console.log(`CardIntel API listening on http://localhost:${port}`);
-  if (!process.env.GEMINI_API_KEY) console.log('  (no GEMINI_API_KEY in env — demo mode unless a key is provided from the app Settings)');
+  if (cfg.geminiKey) {
+    console.log(`  Live Gemini AI enabled (model: ${cfg.geminiModel}, grounding: ${cfg.grounding ? 'on' : 'off'})`);
+  } else {
+    console.log('  (no GEMINI_API_KEY in server environment — running in demo mode)');
+  }
 });

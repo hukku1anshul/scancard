@@ -1,32 +1,8 @@
 import type { Card, CrmResult, Health, ScanEvent, ScanRecord, Settings } from '../types';
 
-/** Settings are sent as a single base64 JSON header; empty values are omitted so server .env applies. */
-function headers(settings: Settings): Record<string, string> {
-  const {
-    eventMode,
-    defaultEvent,
-    autoGeo,
-    senderName,
-    senderCompany,
-    senderPhone,
-    senderEmail,
-    senderWebsite,
-    senderLinkedin,
-    senderGstin,
-    ...rest
-  } = settings;
-  const cfg: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(rest)) {
-    if (typeof v === 'boolean' || (typeof v === 'string' && v.trim())) cfg[k] = v;
-  }
-  const json = JSON.stringify(cfg);
-  const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(json)));
-  return { 'Content-Type': 'application/json', 'x-ci-config': b64 };
-}
-
-export async function fetchHealth(settings: Settings): Promise<Health | null> {
+export async function fetchHealth(_settings?: Settings): Promise<Health | null> {
   try {
-    const r = await fetch('/api/health', { headers: headers(settings) });
+    const r = await fetch('/api/health');
     return r.ok ? await r.json() : null;
   } catch {
     return null;
@@ -39,16 +15,16 @@ export interface ScanPayload {
   refresh?: boolean;
 }
 
-/** Streams NDJSON progress events from the server. */
+/** Streams NDJSON progress events from the server using server-configured API keys. */
 export async function streamScan(
   payload: ScanPayload,
-  settings: Settings,
+  _settings: Settings,
   onEvent: (e: ScanEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
   const res = await fetch('/api/scan', {
     method: 'POST',
-    headers: headers(settings),
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
     signal,
   });
@@ -71,10 +47,14 @@ export async function streamScan(
   if (buf.trim()) onEvent(JSON.parse(buf));
 }
 
-export async function pushToCrm(provider: 'hubspot' | 'salesforce', record: ScanRecord, settings: Settings): Promise<CrmResult> {
+export async function pushToCrm(provider: 'hubspot' | 'salesforce', record: ScanRecord, _settings?: Settings): Promise<CrmResult> {
   try {
     const { thumb, ...rec } = record; // don't upload image
-    const r = await fetch(`/api/crm/${provider}`, { method: 'POST', headers: headers(settings), body: JSON.stringify({ record: rec }) });
+    const r = await fetch(`/api/crm/${provider}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ record: rec }),
+    });
     const d = await r.json().catch(() => ({}));
     return { ok: r.ok && d.ok, message: d.message || `HTTP ${r.status}`, url: d.url };
   } catch (e) {
