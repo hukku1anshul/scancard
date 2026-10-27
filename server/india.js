@@ -98,16 +98,42 @@ const GSTIN_RE = /\b([0-3]\d)([A-Z]{5}\d{4}[A-Z])([1-9A-Z])Z([0-9A-Z])\b/i;
 const CIN_RE = /\b([LU])(\d{5})([A-Z]{2})(\d{4})([A-Z]{3})(\d{6})\b/i;
 const LLPIN_RE = /\b([A-Z]{3}-\d{4})\b/;
 
+// Robust regex that handles arbitrary spaces inserted by OCR between components
+const SPACED_GSTIN_RE = /(?:GSTIN|GST|GST\s*NO)[\s:#-]*([0-3]\d)[\s-]*([A-Z]{5})[\s-]*(\d{4})[\s-]*([A-Z])[\s-]*([1-9A-Z])[\s-]*([Z])[\s-]*([0-9A-Z])/i;
+const SPACED_CIN_RE = /(?:CIN|CIN\s*NO)[\s:#-]*([LU])[\s-]*(\d{5})[\s-]*([A-Z]{2})[\s-]*(\d{4})[\s-]*([A-Z]{3})[\s-]*(\d{6})/i;
+
 export function extractIndianIdsFromText(text = '') {
   if (!text) return { gstin: null, cin: null };
-  const compact = String(text).replace(/\s+/g, ' ');
-  const gstMatch = compact.match(GSTIN_RE);
-  const cinMatch = compact.match(CIN_RE);
-  const llpMatch = !cinMatch ? compact.match(/LLPIN\s*[:#-]?\s*([A-Z]{3}-\d{4})/i) : null;
-  return {
-    gstin: gstMatch ? gstMatch[0].toUpperCase() : null,
-    cin: cinMatch ? cinMatch[0].toUpperCase() : llpMatch ? llpMatch[1].toUpperCase() : null,
-  };
+  const str = String(text);
+  
+  // 1. Direct standard regex match
+  let gstMatch = str.match(GSTIN_RE);
+  let gstin = gstMatch ? gstMatch[0].toUpperCase() : null;
+
+  // 2. If not matched, try spaced OCR regex with GSTIN prefix
+  if (!gstin) {
+    const spacedGst = str.match(SPACED_GSTIN_RE);
+    if (spacedGst) {
+      gstin = spacedGst.slice(1).join('').toUpperCase();
+    }
+  }
+
+  // 3. Direct standard CIN match
+  let cinMatch = str.match(CIN_RE);
+  let cin = cinMatch ? cinMatch[0].toUpperCase() : null;
+
+  // 4. If not matched, try spaced OCR regex with CIN prefix
+  if (!cin) {
+    const spacedCin = str.match(SPACED_CIN_RE);
+    if (spacedCin) {
+      cin = spacedCin.slice(1).join('').toUpperCase();
+    }
+  }
+
+  const llpMatch = !cin ? str.match(/LLPIN\s*[:#-]?\s*([A-Z]{3}-\d{4})/i) : null;
+  if (!cin && llpMatch) cin = llpMatch[1].toUpperCase();
+
+  return { gstin, cin };
 }
 
 export function decodeGstin(gstin) {

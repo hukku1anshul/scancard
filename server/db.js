@@ -140,7 +140,7 @@ export function upsertRecord(record) {
   const updated = {
     ...existing,
     ...record,
-    updatedAt: Date.now(),
+    updatedAt: record.updatedAt || Date.now(),
     createdAt: existing?.createdAt || record.createdAt || Date.now(),
   };
   recordsMap.set(record.id, updated);
