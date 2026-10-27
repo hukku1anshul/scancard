@@ -367,25 +367,40 @@ export default function App() {
 
   return (
     <div className="mx-auto flex min-h-full max-w-xl flex-col">
-      <header className="safe-top sticky top-0 z-20 bg-ink-950/80 backdrop-blur">
-        <div className="flex items-center gap-2 px-4 py-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-fuchsia-500">
-            <Sparkles className="h-4 w-4" />
+      <header className="safe-top sticky top-0 z-20 border-b border-white/10 bg-ink-950/85 backdrop-blur-md">
+        <div className="flex items-center gap-2.5 px-4 py-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 via-indigo-600 to-fuchsia-500 shadow-md shadow-indigo-500/20">
+            <Sparkles className="h-4.5 w-4.5 text-white" />
           </div>
           <div className="leading-tight">
-            <div className="text-sm font-semibold">CardIntel</div>
-            <div className="text-[11px] text-slate-500">{title[view]}</div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm font-bold tracking-tight text-white">CardIntel</span>
+              {!demoMode ? (
+                <span className="flex items-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-500/15 px-1.5 py-0.2 text-[9px] font-semibold text-emerald-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live AI
+                </span>
+              ) : (
+                <span className="rounded-full border border-amber-400/30 bg-amber-500/15 px-1.5 py-0.2 text-[9px] font-semibold text-amber-300">
+                  Demo
+                </span>
+              )}
+            </div>
+            <div className="text-[11px] text-slate-400 truncate max-w-[200px]">{title[view]}</div>
           </div>
           <div className="ml-auto flex items-center gap-1.5">
             <button
               onClick={() => setMyQrOpen(true)}
-              className="flex items-center gap-1 rounded-full border border-indigo-400/30 bg-indigo-500/15 px-2.5 py-1 text-[11px] font-medium text-indigo-200 hover:bg-indigo-500/25"
+              className="flex items-center gap-1 rounded-full border border-indigo-400/40 bg-indigo-500/15 px-2.5 py-1 text-[11px] font-medium text-indigo-200 transition hover:bg-indigo-500/25 active:scale-95 shadow-sm"
               title="Show My Digital Business Card QR"
             >
-              <QrCode className="h-3.5 w-3.5" /> My Card
+              <QrCode className="h-3.5 w-3.5 text-indigo-300" /> My Card
             </button>
-            {queueCount > 0 && <span className="rounded-full bg-indigo-500/20 px-2 py-0.5 text-[10px] font-medium text-indigo-200">{queueCount} processing</span>}
-            {demoMode && <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-300">DEMO</span>}
+            {queueCount > 0 && (
+              <span className="flex items-center gap-1 rounded-full border border-indigo-400/30 bg-indigo-500/20 px-2 py-0.5 text-[10px] font-medium text-indigo-200">
+                <span className="h-1.5 w-1.5 rounded-full bg-indigo-400 animate-ping" />
+                {queueCount}
+              </span>
+            )}
           </div>
         </div>
       </header>
@@ -503,20 +518,34 @@ export default function App() {
         </div>
       )}
 
-      <nav className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-white/5 bg-ink-900/90 backdrop-blur">
-        <div className="mx-auto grid max-w-xl grid-cols-3">
+      <nav className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-ink-950/90 shadow-2xl backdrop-blur-lg">
+        <div className="mx-auto grid max-w-xl grid-cols-3 px-2 py-1">
           {([
             ['scan', 'Scan', ScanLine],
-            ['history', 'History', HistoryIcon],
+            ['history', 'History & ROI', HistoryIcon],
             ['settings', 'Settings', SettingsIcon],
           ] as const).map(([id, label, Icon]) => {
             const active = view === id || (id === 'scan' && view === 'processing') || (id === 'history' && view === 'dossier');
             return (
-              <button key={id} onClick={() => nav(id)} className={`relative flex flex-col items-center gap-1 py-3 text-[11px] ${active ? 'text-indigo-300' : 'text-slate-500'}`}>
-                <Icon className="h-5 w-5" />
-                {label}
+              <button
+                key={id}
+                onClick={() => nav(id)}
+                className={`relative flex flex-col items-center gap-1 py-2 text-[11px] font-medium transition-all ${
+                  active ? 'text-indigo-300' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <div
+                  className={`flex h-8 w-14 items-center justify-center rounded-xl transition-all ${
+                    active ? 'bg-indigo-500/25 border border-indigo-400/40 shadow-sm text-indigo-200' : 'bg-transparent text-slate-400'
+                  }`}
+                >
+                  <Icon className="h-5 w-5" />
+                </div>
+                <span>{label}</span>
                 {id === 'history' && queueCount > 0 && (
-                  <span className="absolute right-[30%] top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-indigo-500 px-1 text-[9px] text-white">{queueCount}</span>
+                  <span className="absolute right-[24%] top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-indigo-500 px-1 text-[9px] font-bold text-white shadow">
+                    {queueCount}
+                  </span>
                 )}
               </button>
             );

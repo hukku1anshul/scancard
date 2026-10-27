@@ -380,35 +380,56 @@ export default function DossierView({
           </div>
         )}
 
-        <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-indigo-600/30 via-ink-800 to-fuchsia-600/20 p-5">
+        <div className="relative overflow-hidden rounded-3xl border border-white/15 bg-gradient-to-br from-indigo-900/40 via-ink-850 to-fuchsia-900/30 p-5 shadow-2xl backdrop-blur-md">
           <div className="flex items-start gap-4">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-lg font-bold">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-lg font-bold shadow-lg shadow-indigo-500/20">
               {initials(card.fullName || companyName)}
             </div>
             <div className="min-w-0 flex-1">
-              <h1 className="truncate text-xl font-semibold">{card.fullName || companyName}</h1>
-              <p className="text-sm text-slate-300">{card.jobTitle || d?.person.title}</p>
-              <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-sm text-indigo-200">
-                <Building2 className="h-3.5 w-3.5" /> {companyName}
-                {d?.identity?.company && <IdentityBadge level={d.identity.company.level} title={d.identity.company.reasons.join('\n')} />}
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="truncate text-xl font-bold tracking-tight text-white">{card.fullName || companyName}</h1>
+                {d?.kyc ? (
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                      d.kyc.tier === 'verified'
+                        ? 'border-emerald-400/40 bg-emerald-500/20 text-emerald-300 shadow-sm'
+                        : d.kyc.tier === 'review'
+                        ? 'border-amber-400/40 bg-amber-500/20 text-amber-300'
+                        : 'border-sky-400/40 bg-sky-500/20 text-sky-300'
+                    }`}
+                  >
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                    KYC {d.kyc.score}/100 · {d.kyc.tier}
+                  </span>
+                ) : (
+                  d?.identity?.company && <IdentityBadge level={d.identity.company.level} title={d.identity.company.reasons.join('\n')} />
+                )}
+              </div>
+              <p className="text-sm font-medium text-slate-300">{card.jobTitle || d?.person.title}</p>
+              <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-indigo-200">
+                <Building2 className="h-3.5 w-3.5 text-indigo-400" />
+                <span className="font-semibold">{companyName}</span>
+                {d?.company.legalName && d.company.legalName !== companyName && (
+                  <span className="text-slate-400 font-normal">({d.company.legalName})</span>
+                )}
               </p>
             </div>
-            {d?.company.logo && <img src={d.company.logo} alt="" className="h-10 w-10 shrink-0 rounded-lg bg-white object-contain p-1" />}
+            {d?.company.logo && <img src={d.company.logo} alt="" className="h-11 w-11 shrink-0 rounded-xl bg-white object-contain p-1 shadow-md" />}
           </div>
 
           {/* Event, Booth, GPS Location & Statutory Context Pills */}
-          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs">
+          <div className="mt-3.5 flex flex-wrap items-center gap-1.5 text-xs">
             {record.event ? (
               <button
                 onClick={() => setTab('notes')}
-                className="inline-flex items-center gap-1 rounded-full border border-indigo-400/30 bg-indigo-500/20 px-2.5 py-1 text-indigo-200"
+                className="inline-flex items-center gap-1 rounded-full border border-indigo-400/30 bg-indigo-500/20 px-2.5 py-1 text-indigo-200 hover:bg-indigo-500/30 transition"
               >
                 <Calendar className="h-3 w-3" /> {record.event}{record.booth ? ` · ${record.booth}` : ''}
               </button>
             ) : (
               <button
                 onClick={() => setTab('notes')}
-                className="inline-flex items-center gap-1 rounded-full border border-dashed border-white/15 bg-white/5 px-2.5 py-1 text-slate-400 hover:text-slate-200"
+                className="inline-flex items-center gap-1 rounded-full border border-dashed border-white/15 bg-white/5 px-2.5 py-1 text-slate-400 hover:text-slate-200 transition"
               >
                 <Calendar className="h-3 w-3" /> + Add Event / Stall
               </button>
@@ -419,7 +440,7 @@ export default function DossierView({
                 href={locHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-500/15 px-2.5 py-1 text-emerald-200"
+                className="inline-flex items-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-500/15 px-2.5 py-1 text-emerald-200 hover:bg-emerald-500/25 transition"
                 title="Open scan GPS location in Google Maps"
               >
                 <MapPin className="h-3 w-3" /> {record.location.label}
@@ -428,7 +449,7 @@ export default function DossierView({
               <button
                 onClick={handleCaptureGps}
                 disabled={geoBusy}
-                className="inline-flex items-center gap-1 rounded-full border border-dashed border-white/15 bg-white/5 px-2.5 py-1 text-slate-400 hover:text-slate-200"
+                className="inline-flex items-center gap-1 rounded-full border border-dashed border-white/15 bg-white/5 px-2.5 py-1 text-slate-400 hover:text-slate-200 transition"
               >
                 {geoBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <LocateFixed className="h-3 w-3" />} + Tag GPS Location
               </button>
@@ -440,17 +461,23 @@ export default function DossierView({
               </span>
             )}
 
+            {cin && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-sky-400/30 bg-sky-500/15 px-2.5 py-1 font-mono text-[11px] text-sky-200">
+                CIN: {cin}
+              </span>
+            )}
+
             <button
               onClick={() => setTab('notes')}
-              className="inline-flex items-center gap-1 rounded-full border border-fuchsia-400/30 bg-fuchsia-500/15 px-2.5 py-1 text-fuchsia-200"
+              className="inline-flex items-center gap-1 rounded-full border border-fuchsia-400/30 bg-fuchsia-500/15 px-2.5 py-1 text-fuchsia-200 hover:bg-fuchsia-500/25 transition"
             >
-              <UserPlus className="h-3 w-3" /> + Colleague / Phone / Note
+              <UserPlus className="h-3 w-3" /> + Colleague / Note
             </button>
           </div>
 
           {/* Priority selector bar */}
           <div className="mt-3 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-            <span className="text-[11px] text-slate-400 mr-1 flex items-center gap-1">
+            <span className="text-[11px] text-slate-400 mr-1 flex items-center gap-1 shrink-0">
               <Flame className="h-3 w-3 text-amber-400" /> Priority:
             </span>
             {PRIORITIES.map((p) => {
@@ -468,7 +495,7 @@ export default function DossierView({
               );
             })}
             {record.dealValue && (
-              <span className="ml-auto rounded-full border border-emerald-400/30 bg-emerald-500/20 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-200">
+              <span className="ml-auto rounded-full border border-emerald-400/30 bg-emerald-500/20 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-200 shrink-0">
                 Deal: {record.dealValue}
               </span>
             )}
@@ -487,6 +514,27 @@ export default function DossierView({
             <ActionBtn icon={<Phone className="h-5 w-5" />} label="Call" href={card.phones[0] ? `tel:${(phoneV(card.phones[0].number)?.e164 || card.phones[0].number).replace(/[^\d+]/g, '')}` : undefined} />
             <ActionBtn icon={<Mail className="h-5 w-5" />} label="Email" href={card.emails[0] ? `mailto:${card.emails[0]}` : undefined} />
             <ActionBtn icon={<Send className="h-5 w-5" />} label="CRM" onClick={() => setCrmOpen(true)} />
+          </div>
+
+          {/* Quick PDF Report & Calendar Action Strip */}
+          <div className="mt-3 flex items-center justify-between border-t border-white/10 pt-2.5 text-xs">
+            <a
+              href={`/api/export/report/${record.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-slate-300 hover:bg-white/10 hover:text-white transition"
+              title="Download print-ready Executive PDF report"
+            >
+              <Printer className="h-3.5 w-3.5 text-indigo-400" /> PDF Report
+            </a>
+            <button
+              type="button"
+              onClick={() => downloadCalendarReminder(record)}
+              className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-slate-300 hover:bg-white/10 hover:text-white transition"
+              title="Download iCal reminder event for follow-up"
+            >
+              <Calendar className="h-3.5 w-3.5 text-fuchsia-400" /> + Reminder (.ics)
+            </button>
           </div>
           {d?.cachedAt && (
             <p className="mt-3 text-[11px] text-slate-400">
