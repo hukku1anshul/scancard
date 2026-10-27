@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1050 600" width="1050" height="600">
+  <rect width="1050" height="600" rx="28" fill="#ffffff"/>
+  <rect width="22" height="600" fill="#1d4ed8"/>
+  <g transform="translate(80 80)">
+    <rect width="76" height="76" rx="16" fill="#1d4ed8"/>
+    <path d="M18 58 L18 18 L38 44 L58 18 L58 58" stroke="#fff" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="100" y="40" font-family="Helvetica, Arial, sans-serif" font-size="40" font-weight="700" fill="#0f172a">Northwind Robotics</text>
+    <text x="100" y="72" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#64748b">Autonomy for every warehouse</text>
+  </g>
+  <text x="80" y="300" font-family="Helvetica, Arial, sans-serif" font-size="52" font-weight="700" fill="#0f172a">Priya Raman</text>
+  <text x="80" y="345" font-family="Helvetica, Arial, sans-serif" font-size="28" fill="#1d4ed8">VP, Strategic Partnerships</text>
+  <g font-family="Helvetica, Arial, sans-serif" font-size="24" fill="#334155">
+    <text x="80" y="430">M  +1 415 555 0142</text>
+    <text x="80" y="466">T  +1 415 555 0100</text>
+    <text x="80" y="502">E  priya.raman@northwind-robotics.example</text>
+    <text x="80" y="538">W  northwind-robotics.example</text>
+  </g>
+  <g font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#64748b" text-anchor="end">
+    <text x="980" y="466">500 Harbor Blvd, Suite 300</text>
+    <text x="980" y="496">San Francisco, CA 94107</text>
+    <text x="980" y="526">linkedin.com/in/priya-raman-demo</text>
+  </g>
+</svg>

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1050 600" width="1050" height="600">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#111827"/>
+      <stop offset="1" stop-color="#1f2937"/>
+    </linearGradient>
+  </defs>
+  <rect width="1050" height="600" rx="28" fill="url(#bg)"/>
+  <!-- Vertical card content rotated 90deg, simulating a portrait card photographed sideways -->
+  <g transform="translate(1050 0) rotate(90)">
+    <g transform="translate(300 90)" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif">
+      <circle cx="0" cy="40" r="44" fill="none" stroke="#d4af37" stroke-width="4"/>
+      <text x="0" y="56" font-size="44" fill="#d4af37" font-weight="700">A</text>
+      <text x="0" y="140" font-size="34" fill="#f9fafb" letter-spacing="6">ATLAS</text>
+      <text x="0" y="172" font-size="18" fill="#9ca3af" letter-spacing="4">ADVISORY PARTNERS</text>
+      <line x1="-120" y1="210" x2="120" y2="210" stroke="#d4af37" stroke-width="2"/>
+      <text x="0" y="270" font-size="36" fill="#f9fafb">Daniel K. Ortiz</text>
+      <text x="0" y="306" font-size="20" fill="#d4af37" font-family="Helvetica, Arial, sans-serif">Managing Director, M&amp;A</text>
+      <g font-family="Helvetica, Arial, sans-serif" font-size="18" fill="#d1d5db">
+        <text x="0" y="420">+44 20 7946 0958</text>
+        <text x="0" y="452">d.ortiz@atlas-advisory.example</text>
+        <text x="0" y="484">atlas-advisory.example</text>
+        <text x="0" y="560" fill="#9ca3af">1 Canada Square, London E14 5AB</text>
+      </g>
+    </g>
+  </g>
+</svg>

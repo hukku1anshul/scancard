@@ -1,0 +1,42 @@
+# Render Blueprint: deploy CardIntel on Render's free tier
+services:
+  - type: web
+    name: scancard
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22.13.0
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: GROUNDING
+        value: "on"
+      - key: GEMINI_API_KEY
+        sync: false # Set in the Render dashboard
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: SERPAPI_KEY
+        sync: false
+      - key: COMPANIES_HOUSE_KEY
+        sync: false
+      - key: OPENCORPORATES_TOKEN
+        sync: false
+      - key: DNB_KEY
+        sync: false
+      - key: DNB_SECRET
+        sync: false
+      - key: APOLLO_API_KEY
+        sync: false
+      - key: PDL_API_KEY
+        sync: false
+      - key: HUBSPOT_TOKEN
+        sync: false
+      - key: SF_INSTANCE_URL
+        sync: false
+      - key: SF_ACCESS_TOKEN
+        sync: false
