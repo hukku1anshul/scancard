@@ -16,6 +16,8 @@ export interface Card {
   website: string | null;
   domain: string | null;
   address: string | null;
+  gstin?: string | null;
+  cin?: string | null;
   socials: {
     linkedin?: string | null;
     twitter?: string | null;
@@ -62,6 +64,9 @@ export interface Dossier {
     parentCompany?: string | null;
     dunsNumber?: string | null;
     lei?: string | null;
+    cin?: string | null;
+    gstin?: string | null;
+    pan?: string | null;
     logo?: string | null;
     registryInfo?: string | null;
     website?: string | null;
@@ -130,6 +135,8 @@ export type RecordStatus = 'queued' | 'processing' | 'done' | 'error';
 
 export type LeadPriority = 'hot' | 'warm' | 'cold' | 'partner';
 
+export type ContactRole = 'buyer' | 'distributor' | 'partner' | 'vendor' | 'investor' | 'speaker';
+
 export interface ScanLocation {
   lat?: number;
   lng?: number;
@@ -167,10 +174,14 @@ export interface ScanRecord {
   status?: RecordStatus;
   progress?: string;
   error?: string;
-  // Rich event, location & relationship context
+  // Rich event, location, India & relationship context
   event?: string | null;
+  booth?: string | null;
   location?: ScanLocation | null;
   priority?: LeadPriority | null;
+  contactRole?: ContactRole | null;
+  actionItems?: string[];
+  dealValue?: string | null;
   tags?: string[];
   followUpDate?: string | null; // YYYY-MM-DD
   associatedContacts?: AssociatedContact[];
@@ -197,6 +208,11 @@ export interface Settings {
   autoGeo: boolean;
   senderName: string;
   senderCompany: string;
+  senderPhone: string;
+  senderEmail: string;
+  senderWebsite: string;
+  senderLinkedin: string;
+  senderGstin: string;
 }
 
 export interface Health {

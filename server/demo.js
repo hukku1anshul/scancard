@@ -1,180 +1,196 @@
 // Demo mode: used when no Gemini API key is configured. Simulates the full
-// pipeline with a fictional company so the UI can be explored end-to-end.
+// pipeline with fictional US or Indian companies so the UI can be explored end-to-end.
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const DEMO_CARD = {
-  fullName: 'Priya Raman',
-  firstName: 'Priya',
-  lastName: 'Raman',
-  jobTitle: 'VP, Strategic Partnerships',
-  department: 'Business Development',
-  company: 'Northwind Robotics',
-  tagline: 'Autonomy for every warehouse',
-  emails: ['priya.raman@northwind-robotics.example'],
+const DEMO_CARD_INDIA = {
+  fullName: 'Rajesh Deshmukh',
+  firstName: 'Rajesh',
+  lastName: 'Deshmukh',
+  jobTitle: 'Managing Director',
+  department: 'Executive Management',
+  company: 'Bharat Precision Engg. Pvt. Ltd.',
+  tagline: 'EV Powertrain & CNC Automation · ISO 9001 & IATF 16949',
+  emails: ['rajesh.d@bharatprecision.co.in'],
   phones: [
-    { type: 'mobile', number: '+1 415 555 0142' },
-    { type: 'work', number: '+1 415 555 0100' },
+    { type: 'whatsapp', number: '+91 98220 45120' },
+    { type: 'work', number: '+91 20 2712 8800' },
   ],
-  website: 'https://northwind-robotics.example',
-  domain: 'northwind-robotics.example',
-  address: '500 Harbor Blvd, Suite 300, San Francisco, CA 94107, USA',
-  socials: { linkedin: 'https://www.linkedin.com/in/priya-raman-demo', twitter: null, facebook: null, instagram: null, other: [] },
-  language: 'English',
-  notes: null,
-  confidence: 0.97,
+  website: 'https://www.bharatprecision.co.in',
+  domain: 'bharatprecision.co.in',
+  address: 'Plot E-42, MIDC Bhosari, Pune - 411026, Maharashtra, India',
+  gstin: '27AABCB4512R1Z6',
+  cin: 'U28100MH2015PTC268901',
+  socials: { linkedin: 'https://www.linkedin.com/in/rajesh-deshmukh-demo', twitter: null, facebook: null, instagram: null, other: [] },
+  language: 'English / Hindi',
+  notes: 'Hall 4, Stall B-18 · Bharat Mobility Global Expo',
+  confidence: 0.98,
 };
 
-const DEMO_DOSSIER = {
+const DEMO_DOSSIER_INDIA = {
   company: {
-    name: 'Northwind Robotics',
-    legalName: 'Northwind Robotics, Inc.',
-    tagline: 'Autonomy for every warehouse',
+    name: 'Bharat Precision Engg. Pvt. Ltd.',
+    legalName: 'BHARAT PRECISION ENGINEERING PRIVATE LIMITED',
+    tagline: 'EV Powertrain & CNC Automation · ISO 9001 & IATF 16949',
     summary:
-      'Northwind Robotics builds autonomous mobile robots (AMRs) and fleet-orchestration software that automate picking, replenishment and pallet moves in mid-size warehouses. It sells a Robots-as-a-Service subscription aimed at 3PLs and e-commerce fulfilment centres that cannot justify fixed automation.',
-    industry: 'Industrial Automation & Robotics',
-    subIndustry: 'Warehouse autonomous mobile robots',
-    businessModel: 'B2B hardware + SaaS (Robots-as-a-Service)',
-    founded: '2017',
-    headquarters: 'San Francisco, CA, USA',
-    locations: ['San Francisco, CA', 'Austin, TX', 'Rotterdam, NL'],
-    employeeRange: '201–500',
-    revenueRange: 'Likely $50M–$100M',
-    ownership: 'Private (venture-backed)',
+      'Bharat Precision Engineering Pvt. Ltd. manufactures high-precision CNC machined EV powertrain housings, transmission gears, and robotic welding fixtures for Indian and European automotive OEMs and Tier-1 suppliers from its two plants in MIDC Bhosari and Chakan, Pune.',
+    industry: 'Machinery & Industrial Equipment (NIC 28100)',
+    subIndustry: 'EV Powertrain Components & Industrial Automation',
+    businessModel: 'B2B OEM Manufacturing & Export',
+    founded: '2015',
+    headquarters: 'Pune, Maharashtra, India',
+    locations: ['MIDC Bhosari, Pune (Plant I)', 'Chakan Industrial Area, Pune (Plant II)', 'Gurugram Sales Office'],
+    employeeRange: '250–500',
+    revenueRange: '₹145 Cr (FY25)',
+    ownership: 'Private Limited Company (Pvt. Ltd.)',
     parentCompany: null,
-    dunsNumber: '00-000-0000 (demo)',
-    lei: '5493000DEMO00000000X',
+    dunsNumber: '86-214-0092 (demo)',
+    lei: '335800DEMOIND000001Z',
+    cin: 'U28100MH2015PTC268901',
+    gstin: '27AABCB4512R1Z6',
+    pan: 'AABCB4512R',
     logo: null,
-    registryInfo: 'Delaware C-Corp, active. Business directory lists SIC 3569 (General industrial machinery) and NAICS 333922. (Demo data)',
-    website: 'https://northwind-robotics.example',
+    registryInfo:
+      'Registered with RoC Mumbai/Pune under CIN U28100MH2015PTC268901 (Active). Paid-up capital ₹12.5 Cr. GSTIN 27AABCB4512R1Z6 active in Maharashtra (27). CRISIL BBB+/Stable credit rating. (Demo data)',
+    website: 'https://www.bharatprecision.co.in',
   },
   person: {
-    name: 'Priya Raman',
-    title: 'VP, Strategic Partnerships',
-    seniority: 'VP',
-    department: 'Business Development',
+    name: 'Rajesh Deshmukh',
+    title: 'Managing Director',
+    seniority: 'C-level',
+    department: 'Executive Management',
     summary:
-      'Leads channel and integration partnerships, including WMS vendors and systems integrators. Previously held partnership roles at a supply-chain SaaS company. Frequently speaks about RaaS economics at logistics conferences.',
-    linkedinUrl: 'https://www.linkedin.com/in/priya-raman-demo',
-    responsibilities: ['WMS/ERP integration partnerships', 'Systems-integrator channel program', 'Co-marketing & joint GTM', 'Partner revenue targets'],
+      'Founder & Managing Director (DIN: 07128901) with 22+ years in automotive tooling and EV component manufacturing. Leads OEM strategic accounts with Tata Motors, Mahindra, and Bosch India.',
+    linkedinUrl: 'https://www.linkedin.com/in/rajesh-deshmukh-demo',
+    responsibilities: ['OEM & Tier-1 strategic relationships', 'Chakan EV plant expansion (₹40 Cr capex)', 'Export partnerships (Germany & Japan)', 'Plant automation & quality'],
   },
   products: [
-    { name: 'Northwind Pick AMR', description: 'Collaborative picking robot with 150 kg payload that follows pickers and reduces walking by up to 60%.', category: 'Hardware' },
-    { name: 'Northwind Lift', description: 'Autonomous pallet mover for dock-to-stock and replenishment moves.', category: 'Hardware' },
-    { name: 'FleetOS', description: 'Cloud orchestration platform for mixed robot fleets with WMS connectors, analytics and task allocation.', category: 'Software' },
+    { name: 'EV Motor & Inverter Housings', description: '5-axis CNC machined aluminum die-cast housings for 2W/3W and passenger EVs.', category: 'EV Components' },
+    { name: 'Precision Planetary Gear Assemblies', description: 'Hardened & ground helical/planetary gear sets for electric axles.', category: 'Powertrain' },
+    { name: 'Robotic BIW Welding Fixtures', description: 'Turnkey automated welding cells and gauges for automotive assembly lines.', category: 'Automation' },
   ],
   services: [
-    { name: 'Robots-as-a-Service', description: 'Monthly per-robot subscription including maintenance, software and remote monitoring.' },
-    { name: 'Deployment & Site Mapping', description: '4–6 week deployment with simulation-based ROI modelling.' },
-    { name: '24/7 Remote Fleet Support', description: 'Remote operations centre that monitors and recovers robots.' },
+    { name: 'Rapid Prototyping & PPAP Batch Production', description: '3-week CAD-to-sample turnaround for automotive Tier-1 qualification.' },
+    { name: 'Contract CNC Machining (Export)', description: 'Dedicated export lines for German and Japanese industrial machinery OEMs.' },
   ],
   targetCustomers: {
-    summary: 'Mid-size warehouses (50k–500k sq ft) operated by 3PLs, e-commerce brands and wholesale distributors facing labour shortages.',
-    segments: ['Mid-market', 'Enterprise'],
-    industries: ['Third-party logistics (3PL)', 'E-commerce fulfilment', 'Wholesale distribution', 'Retail'],
-    geographies: ['North America', 'Western Europe'],
-    buyerPersonas: ['VP Operations', 'Director of Distribution', 'Head of Supply Chain Innovation', 'CFO (for RaaS economics)'],
+    summary: 'Indian and global automotive OEMs, EV 2W/3W/4W manufacturers, and Tier-1 driveline suppliers seeking IATF 16949 certified precision machining in Pune.',
+    segments: ['Enterprise OEMs', 'Tier-1 Auto Suppliers', 'EV Startups'],
+    industries: ['Automotive & EV', 'Industrial Automation', 'Aerospace & Defense'],
+    geographies: ['India (Pune, Chennai, NCR, Bengaluru)', 'Germany', 'Japan'],
+    buyerPersonas: ['VP Procurement / Strategic Sourcing', 'Head of EV Powertrain Engineering', 'Plant Head', 'Supply Chain Director'],
   },
   notableCustomers: [
-    { name: 'Contoso Logistics', evidence: 'Case study: 2.1x picks per hour across 3 sites (demo).', url: null },
-    { name: 'Fabrikam Outdoor', evidence: 'Logo on website customer page (demo).', url: null },
+    { name: 'Tata Passenger Electric Mobility (Demo)', evidence: 'Tier-1 supplier for motor housing machining in Pune.', url: null },
+    { name: 'Bajaj Auto / Chetak EV (Demo)', evidence: 'Supplies precision transmission shafts and aluminium castings.', url: null },
   ],
-  partners: ['Major WMS vendors (integration marketplace)', 'Regional systems integrators'],
-  competitors: ['Locus Robotics', '6 River Systems', 'Geek+', 'Fetch (Zebra)'],
+  partners: ['Siemens Digital Industries (NX CAM)', 'Fanuc India (Robotic cell integration)'],
+  competitors: ['Sansera Engineering', 'Endurance Technologies', 'Rico Auto Industries', 'Craftsman Automation'],
   socialPresence: [
-    { platform: 'LinkedIn', url: 'https://www.linkedin.com/company/northwind-robotics-demo', handle: 'northwind-robotics', notes: '≈18k followers; posts weekly customer stories (demo)' },
-    { platform: 'YouTube', url: 'https://www.youtube.com/@northwindrobotics-demo', handle: '@northwindrobotics', notes: 'Product demo videos' },
-    { platform: 'X / Twitter', url: 'https://x.com/northwind_demo', handle: '@northwind_demo', notes: 'Low activity' },
+    { platform: 'LinkedIn', url: 'https://www.linkedin.com/company/bharat-precision-demo', handle: 'bharat-precision-engg', notes: '≈9.5k followers; active expo & plant updates (demo)' },
+    { platform: 'IndiaMART', url: 'https://www.indiamart.com/bharatprecision-demo', handle: 'TrustSEAL Verified Exporter', notes: '4.8★ rating · 140+ listed CNC & EV components' },
   ],
-  signals: ['Hiring 12 field deployment engineers in EU (Q3)', 'Opened Rotterdam office for European expansion', 'Launched FleetOS 3.0 with multi-vendor robot support'],
+  signals: [
+    'Commissioned 35,000 sq. ft. Chakan Phase-II EV plant with ₹40 Cr investment (Q2 2026)',
+    'Awarded Best Zero-Defect Supplier by a leading Pune EV OEM',
+    'Hiring 18 CNC programmers and QA engineers in Pune',
+  ],
   recentNews: [
-    { title: 'Northwind Robotics expands to Europe with Rotterdam hub', url: null, date: '2026-09', summary: 'New EU HQ to support Benelux and German 3PL customers.' },
-    { title: 'FleetOS 3.0 adds mixed-fleet orchestration', url: null, date: '2026-06', summary: 'Supports third-party robots through an open API.' },
+    { title: 'Bharat Precision expands EV powertrain capacity in Chakan, Pune', url: null, date: '2026-08', summary: 'Added 14 new 5-axis Japanese VMC machines to serve domestic and EU EV demand.' },
+    { title: 'Showcasing next-gen lightweight e-axle housings at Bharat Mobility Expo', url: null, date: '2026-10', summary: 'Exhibiting at Hall 4, Stall B-18.' },
   ],
   talkingPoints: [
-    'Congrats on the Rotterdam launch — how are you prioritising EU partners versus direct sales?',
-    'FleetOS 3.0 now orchestrates third-party robots. Is the partner programme moving toward a platform/ecosystem play?',
-    'Your Contoso case study showed 2.1x picks per hour. Which integrations had the most impact on time-to-value?',
-    'As VP Partnerships, how do you measure partner-sourced versus partner-influenced pipeline?',
-    'RaaS shifts the buying conversation to OpEx. Do partners help shape the CFO business case?',
+    'Congrats on commissioning the Chakan Phase-II EV facility — how is capacity utilization ramping up across 2W vs 4W EV housings?',
+    'With 14 new 5-axis VMCs online, are you looking at predictive tool-wear monitoring or MES automation across Bhosari and Chakan?',
+    'How are export inquiries from German Tier-1s trending compared to domestic EV OEM orders this quarter?',
+    'Since you hold IATF 16949 & ISO 9001, how are you managing automated PPAP documentation and traceability for EV customers?',
+    'Great meeting you at Hall 4 — would love to share our catalog and schedule a plant visit in Bhosari next week.',
   ],
   salesAngle:
-    'Northwind is scaling a partner-led EU expansion while hiring deployment engineers. Lead with ways to speed up partner onboarding, integration and co-selling, and back it with ROI evidence that fits their RaaS model.',
-  caveats: ['DEMO MODE: all data is fictional. Add a Gemini API key in Settings to scan real cards.'],
+    'Bharat Precision is actively investing ₹40 Cr in its Chakan EV plant and scaling export orders. Pitch solutions that improve spindle utilization, quality traceability, or working-capital/supply-chain efficiency across their Bhosari and Chakan plants.',
+  caveats: ['DEMO MODE: fictional Indian manufacturing dossier showing MCA CIN, GSTIN, PIN code & INR Cr intelligence. Add a Gemini API key in Settings for live scans.'],
   sources: [
-    { title: 'Northwind Robotics — About (demo)', url: 'https://northwind-robotics.example/about' },
-    { title: 'LinkedIn company page (demo)', url: 'https://www.linkedin.com/company/northwind-robotics-demo' },
+    { title: 'India MCA / ZaubaCorp — U28100MH2015PTC268901 (demo)', url: 'https://www.mca.gov.in' },
+    { title: 'GST Portal — 27AABCB4512R1Z6 (demo)', url: 'https://services.gst.gov.in' },
+    { title: 'IndiaMART Verified Exporter Catalog (demo)', url: 'https://www.indiamart.com' },
   ],
-  confidence: 0.9,
+  confidence: 0.94,
   searchProvider: 'demo',
   grounded: true,
   registryRecords: [
     {
-      source: 'D&B Direct+',
-      url: null,
-      title: 'Northwind Robotics, Inc.',
-      fields: [['D-U-N-S', '00-000-0000 (demo)'], ['Match confidence', '9/10'], ['Status', 'Active'], ['Employees', '340'], ['Industry codes', 'NAICS 333922 — Conveyor and Conveying Equipment Mfg']],
+      source: 'India MCA / GST',
+      url: 'https://www.mca.gov.in',
+      title: 'BHARAT PRECISION ENGINEERING PRIVATE LIMITED',
+      fields: [
+        ['CIN / LLPIN', 'U28100MH2015PTC268901'],
+        ['GSTIN', '27AABCB4512R1Z6'],
+        ['PAN', 'AABCB4512R'],
+        ['Constitution', 'Private Limited Company (Pvt. Ltd.)'],
+        ['Listing status', 'Unlisted'],
+        ['Incorporation year', '2015'],
+        ['State / ROC', 'Maharashtra (RoC Pune)'],
+        ['NIC industry sector', 'Machinery & Industrial Equipment (28100)'],
+        ['Paid-up capital', '₹12.50 Cr (Authorized: ₹15.00 Cr)'],
+        ['Directors (DIN)', 'Rajesh Deshmukh (07128901), Sunita Deshmukh (07128902)'],
+        ['PIN code', '411026 (Bhosari MIDC, Maharashtra)'],
+      ],
     },
     {
       source: 'GLEIF',
       url: null,
-      title: 'NORTHWIND ROBOTICS, INC.',
-      fields: [['LEI', '5493000DEMO00000000X'], ['Status', 'ACTIVE'], ['Jurisdiction', 'US-DE'], ['Legal address', '251 Little Falls Dr, Wilmington, DE, US']],
-    },
-    {
-      source: 'Wikidata',
-      url: null,
-      title: 'Northwind Robotics',
-      fields: [['Founded', '2017'], ['Headquarters', 'San Francisco, United States'], ['Industry', 'robotics, warehouse automation']],
+      title: 'BHARAT PRECISION ENGINEERING PRIVATE LIMITED',
+      fields: [['LEI', '335800DEMOIND000001Z'], ['Status', 'ACTIVE'], ['Jurisdiction', 'IN-MH'], ['Legal address', 'Plot E-42, MIDC Bhosari, Pune 411026, MH, IN']],
     },
   ],
   familyTree: {
-    ultimateParent: { name: 'Northwind Holdings LLC (demo)', id: 'DUNS 00-000-0001', source: 'D&B' },
+    ultimateParent: null,
     parent: null,
-    subsidiaries: ['Northwind Robotics B.V.', 'Northwind Robotics UK Ltd'],
-    familyTreeMembers: 4,
-    sources: ['D&B', 'Wikidata'],
+    subsidiaries: ['Bharat Precision Castings LLP (Chakan)', 'Bharat Automation Systems Pvt. Ltd.'],
+    familyTreeMembers: 3,
+    sources: ['MCA', 'GLEIF'],
   },
   identity: {
-    person: { linkedinUrl: 'https://www.linkedin.com/in/priya-raman-demo', level: 'verified', score: 1, reasons: ['Printed on the business card'], alternatives: [] },
-    company: { level: 'verified', score: 0.95, reasons: ['Email domain matches company website', 'D&B match (confidence code 9)', 'Wikidata entity matched by official website'] },
+    person: { linkedinUrl: 'https://www.linkedin.com/in/rajesh-deshmukh-demo', level: 'verified', score: 1, reasons: ['Printed on the business card', 'Verified MCA Director (DIN 07128901)'], alternatives: [] },
+    company: { level: 'verified', score: 0.98, reasons: ['Valid 21-digit MCA CIN U28100MH2015PTC268901', 'Valid Maharashtra GSTIN 27AABCB4512R1Z6 (PAN: AABCB4512R)', 'Email domain matches .co.in website'] },
   },
   validation: {
-    country: 'US',
-    emails: [{ value: 'priya.raman@northwind-robotics.example', syntax: true, mx: true, mxHost: 'mx.demo', freeMail: false, disposable: false, matchesCompanyDomain: true, status: 'valid' }],
+    country: 'IN',
+    emails: [{ value: 'rajesh.d@bharatprecision.co.in', syntax: true, mx: true, mxHost: 'mx.bharatprecision.co.in', freeMail: false, disposable: false, matchesCompanyDomain: true, status: 'valid' }],
     phones: [
-      { value: '+1 415 555 0142', e164: '+14155550142', international: '+1 415 555 0142', country: 'US', lineType: 'MOBILE', valid: true, status: 'valid' },
-      { value: '+1 415 555 0100', e164: '+14155550100', international: '+1 415 555 0100', country: 'US', lineType: 'FIXED_LINE', valid: true, status: 'valid' },
+      { value: '+91 98220 45120', e164: '+919822045120', international: '+91 98220 45120', country: 'IN', lineType: 'WHATSAPP', valid: true, status: 'valid' },
+      { value: '+91 20 2712 8800', e164: '+912027128800', international: '+91 20 2712 8800', country: 'IN', lineType: 'FIXED_LINE', valid: true, status: 'valid' },
     ],
-    website: { domain: 'northwind-robotics.example', resolves: true },
+    website: { domain: 'bharatprecision.co.in', resolves: true },
   },
 };
 
 export async function runDemo(body, emit) {
   const step = (id, status, detail) => emit({ type: 'step', step: id, status, detail });
-  const card = body.card ? { ...DEMO_CARD, ...body.card } : DEMO_CARD;
+  // Use our Indian demo card by default so Indian market features (GSTIN, CIN, MCA, ₹ Cr, WhatsApp) are immediately visible!
+  const card = body.card ? { ...DEMO_CARD_INDIA, ...body.card } : DEMO_CARD_INDIA;
 
-  step('extract', 'running', 'Demo: simulating Vision AI…');
-  await sleep(900);
+  step('extract', 'running', 'Demo: simulating Vision AI + GSTIN/CIN parser…');
+  await sleep(800);
   step('extract', 'done', `${card.fullName} · ${card.company}`);
   emit({ type: 'card', card });
 
   for (const [id, label, done] of [
-    ['website', 'Crawling northwind-robotics.example', 'Read 6 page(s) (demo)'],
-    ['registry', 'Querying GLEIF, Wikidata, SEC EDGAR, D&B…', 'Verified: D&B, GLEIF, Wikidata (demo)'],
-    ['social', 'Searching LinkedIn & social profiles', '7 result(s) (demo)'],
-    ['market', 'Finding customers, case studies & news', '11 result(s) (demo)'],
-    ['research', 'Gemini + Google Search deep research…', '14 grounded source(s) (demo)'],
+    ['website', `Crawling ${card.domain || 'bharatprecision.co.in'}`, 'Read 6 page(s) (demo)'],
+    ['registry', 'Querying India MCA/GST, GLEIF, Wikidata, D&B…', 'Verified: India MCA/GST (CIN + GSTIN), GLEIF (demo)'],
+    ['social', 'Searching LinkedIn, IndiaMART & people data', '9 result(s) (demo)'],
+    ['market', 'Finding OEM customers, case studies & news', '12 result(s) (demo)'],
+    ['research', 'Gemini + Google Search deep research…', '15 grounded source(s) (demo)'],
   ]) {
     step(id, 'running', label);
-    await sleep(550);
+    await sleep(500);
     step(id, 'done', done);
   }
   step('synthesize', 'running', 'Building 360° dossier…');
-  await sleep(900);
+  await sleep(800);
   step('synthesize', 'done', 'Draft dossier ready');
-  step('gapfill', 'running', 'Looking for: news from the last 12 months');
-  await sleep(600);
+  step('gapfill', 'running', 'Looking for: Chakan plant expansion & FY25 revenue');
+  await sleep(500);
   step('gapfill', 'done', 'Filled 1/1 gap(s) (demo)');
-  emit({ type: 'result', dossier: { ...DEMO_DOSSIER, generatedAt: new Date().toISOString() }, demo: true });
+  emit({ type: 'result', dossier: { ...DEMO_DOSSIER_INDIA, generatedAt: new Date().toISOString() }, demo: true });
 }

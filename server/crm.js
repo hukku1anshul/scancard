@@ -4,9 +4,15 @@ function summaryText(record) {
   const d = record.dossier;
   const parts = [
     record.event ? `Event / Conference: ${record.event}` : null,
+    record.booth ? `Hall / Stall: ${record.booth}` : null,
     record.location?.label ? `Location (GPS): ${record.location.label}` : null,
     record.priority ? `Priority: ${String(record.priority).toUpperCase()}` : null,
+    record.contactRole ? `Contact Role: ${record.contactRole}` : null,
+    record.dealValue ? `Estimated Deal Value: ${record.dealValue}` : null,
     record.followUpDate ? `Follow-Up Date: ${record.followUpDate}` : null,
+    record.actionItems?.length ? `Action Items:\n- ${record.actionItems.join('\n- ')}` : null,
+    record.card?.gstin || d?.company?.gstin ? `GSTIN: ${record.card?.gstin || d?.company?.gstin}` : null,
+    record.card?.cin || d?.company?.cin ? `CIN (MCA): ${record.card?.cin || d?.company?.cin}` : null,
     record.associatedContacts?.length
       ? `Additional People Spoken To at Company:\n- ${record.associatedContacts
           .map((c) => `${c.name}${c.role ? ` (${c.role})` : ''}${c.email ? ` · ${c.email}` : ''}${c.phone ? ` · ${c.phone}` : ''}${c.notes ? ` — ${c.notes}` : ''}`)

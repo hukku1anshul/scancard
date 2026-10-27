@@ -23,6 +23,11 @@ export const DEFAULT_SETTINGS: Settings = {
   autoGeo: true,
   senderName: '',
   senderCompany: '',
+  senderPhone: '',
+  senderEmail: '',
+  senderWebsite: '',
+  senderLinkedin: '',
+  senderGstin: '',
 };
 
 export function loadSettings(): Settings {

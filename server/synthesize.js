@@ -2,11 +2,12 @@ import { geminiJSON } from './gemini.js';
 import { ok } from './http.js';
 import { assessCompanyIdentity, assessPersonIdentity } from './identity.js';
 
-const SYSTEM = `You are a senior B2B sales-intelligence analyst. You build accurate, well-sourced company & contact dossiers from raw evidence: business card, website crawl, official registry records (GLEIF, Wikidata, SEC EDGAR, Companies House, OpenCorporates, D&B), data-provider records (Apollo, People Data Labs), Google-Search-grounded research notes, and web search results.
+const SYSTEM = `You are a senior B2B sales-intelligence analyst. You build accurate, well-sourced company & contact dossiers from raw evidence: business card, website crawl, official registry records (India MCA/GST, GLEIF, Wikidata, SEC EDGAR, Companies House, OpenCorporates, D&B), data-provider records (Apollo, People Data Labs), Google-Search-grounded research notes, and web search results.
 Strict rules:
 - Prefer official registry and data-provider records over web snippets when they conflict.
 - Only state facts supported by the evidence. When you infer, prefix with "Likely" or "Appears to".
-- NEVER fabricate D-U-N-S numbers, LEIs, revenue, employee counts, customers or URLs. Use null when unknown.
+- NEVER fabricate D-U-N-S numbers, LEIs, CINs, GSTINs, revenue, employee counts, customers or URLs. Use null when unknown.
+- For Indian companies, preserve INR figures (e.g. "₹120 Cr" or "₹45 Lakh") and include MCA CIN / GSTIN / directors details in registryInfo if found.
 - Beware name collisions: ignore results that clearly refer to a different company or person.
 - Cite source URLs that actually appear in the evidence.
 - Write concisely for a busy sales/BD professional.`;
@@ -17,12 +18,12 @@ const SCHEMA = `Return ONLY JSON in exactly this shape:
     "name": string, "legalName": string|null, "tagline": string|null,
     "summary": string (2-4 sentences: what they do, for whom, differentiation),
     "industry": string|null, "subIndustry": string|null,
-    "businessModel": string|null (e.g. "B2B SaaS", "B2C retail", "Professional services"),
+    "businessModel": string|null (e.g. "B2B SaaS", "B2B Manufacturing & Export", "Distributor / Channel Partner", "Professional services"),
     "founded": string|null, "headquarters": string|null, "locations": string[],
     "employeeRange": string|null, "revenueRange": string|null,
-    "ownership": string|null (Private / Public (exchange: ticker) / Subsidiary / Non-profit / Government),
-    "parentCompany": string|null, "dunsNumber": string|null,
-    "registryInfo": string|null (1-3 sentences summarising registry/D&B findings: legal status, registration no., jurisdiction),
+    "ownership": string|null (Private / Public (exchange: ticker) / Subsidiary / LLP / Proprietorship / Government),
+    "parentCompany": string|null, "dunsNumber": string|null, "cin": string|null, "gstin": string|null,
+    "registryInfo": string|null (1-3 sentences summarising registry/MCA/GST/D&B findings: legal status, registration no., directors, paid-up capital, jurisdiction),
     "website": string|null
   },
   "person": {
@@ -64,6 +65,7 @@ function compactEvidence(card, evidence) {
     businessCard: card,
     contactValidation: evidence.validation,
     officialRegistries: {
+      india: okOrNull(R.india),
       gleif: okOrNull(R.gleif), wikidata: okOrNull(R.wikidata), secEdgar: okOrNull(R.sec),
       companiesHouse: okOrNull(R.companiesHouse), openCorporates: okOrNull(R.openCorporates), dnb: okOrNull(R.dnb),
     },
@@ -132,6 +134,11 @@ const fmtNum = (n) => (typeof n === 'number' && isFinite(n) ? n.toLocaleString('
 function fmtMoney(amount, currency) {
   if (typeof amount !== 'number' || !isFinite(amount)) return null;
   const abs = Math.abs(amount);
+  if (/inr|rupee|₹/i.test(currency || '')) {
+    if (abs >= 1e7) return `₹${(amount / 1e7).toFixed(1)} Cr`;
+    if (abs >= 1e5) return `₹${(amount / 1e5).toFixed(1)} Lakh`;
+    return `₹${ amount.toLocaleString('en-IN') }`;
+  }
   const s = abs >= 1e9 ? `${(amount / 1e9).toFixed(1)}B` : abs >= 1e6 ? `${(amount / 1e6).toFixed(1)}M` : fmtNum(amount);
   const cur = /dollar|usd/i.test(currency || '') ? '$' : currency ? `${currency} ` : '';
   return `${cur}${s}`;
@@ -143,6 +150,22 @@ function registryRecords(R) {
     const f = fields.filter(([, v]) => v !== null && v !== undefined && v !== '' && !(Array.isArray(v) && !v.length)).map(([k, v]) => [k, Array.isArray(v) ? v.join(', ') : String(v)]);
     if (f.length) recs.push({ source, url: url || null, title, fields: f });
   };
+  if (ok(R.india)) {
+    const x = R.india;
+    add('India MCA / GST', x.url, x.title, [
+      ['CIN / LLPIN', x.cin],
+      ['GSTIN', x.gstin],
+      ['PAN', x.pan],
+      ['Constitution', x.ownership],
+      ['Listing status', x.listingStatus],
+      ['Incorporation year', x.incorporationYear],
+      ['State / ROC', x.state],
+      ['NIC industry sector', x.nicSector],
+      ['PIN code', x.pinCode],
+      ['MCA / ZaubaCorp / Tofler', x.zaubaUrl],
+      ['IndiaMART / Trade catalog', x.indiamartUrl],
+    ]);
+  }
   if (ok(R.dnb)) {
     const x = R.dnb;
     add('D&B Direct+', null, x.name, [
@@ -233,7 +256,7 @@ export function finalize(d, card, evidence) {
 
   const R = evidence.registry || {};
   const evidenceStr = JSON.stringify(evidence);
-  const wd = okOrNull(R.wikidata), gl = okOrNull(R.gleif), sec = okOrNull(R.sec), ch = okOrNull(R.companiesHouse), oc = okOrNull(R.openCorporates), dnbR = okOrNull(R.dnb);
+  const wd = okOrNull(R.wikidata), gl = okOrNull(R.gleif), sec = okOrNull(R.sec), ch = okOrNull(R.companiesHouse), oc = okOrNull(R.openCorporates), dnbR = okOrNull(R.dnb), ind = okOrNull(R.india);
   const ap = okOrNull(evidence.providers?.company?.apollo), pdl = okOrNull(evidence.providers?.company?.pdl);
   const c = d.company;
 
@@ -242,10 +265,14 @@ export function finalize(d, card, evidence) {
   else if (c.dunsNumber && !evidenceStr.includes(String(c.dunsNumber).replace(/\D/g, '').slice(0, 9))) c.dunsNumber = null;
 
   c.lei = gl?.lei || wd?.lei || null;
+  c.cin = card.cin || ind?.cin || c.cin || null;
+  c.gstin = card.gstin || ind?.gstin || c.gstin || null;
+  c.pan = ind?.pan || null;
   c.logo = wd?.logo || null;
   c.legalName ||= gl?.legalName || ch?.name || oc?.name || sec?.name || dnbR?.name || null;
-  c.founded ||= wd?.inception || ch?.incorporated?.slice(0, 4) || oc?.incorporated?.slice(0, 4) || (ap?.founded ? String(ap.founded) : null) || (pdl?.founded ? String(pdl.founded) : null) || null;
-  c.headquarters ||= dnbR?.address || sec?.businessAddress || (wd?.headquarters ? [wd.headquarters, wd.country].filter(Boolean).join(', ') : null) || gl?.hqAddress || ap?.hq || pdl?.hq || null;
+  c.founded ||= wd?.inception || ind?.incorporationYear || ch?.incorporated?.slice(0, 4) || oc?.incorporated?.slice(0, 4) || (ap?.founded ? String(ap.founded) : null) || (pdl?.founded ? String(pdl.founded) : null) || null;
+  c.headquarters ||= dnbR?.address || sec?.businessAddress || (wd?.headquarters ? [wd.headquarters, wd.country].filter(Boolean).join(', ') : null) || gl?.hqAddress || ap?.hq || pdl?.hq || (ind?.state ? `${ind.state}, India` : null) || null;
+  c.industry ||= ind?.nicSector || null;
   c.employeeRange ||=
     (dnbR?.employees ? `${fmtNum(dnbR.employees)} (D&B)` : null) ||
     (wd?.employees ? `${fmtNum(wd.employees.value)} (Wikidata${wd.employees.asOf ? `, ${wd.employees.asOf}` : ''})` : null) ||
@@ -258,6 +285,7 @@ export function finalize(d, card, evidence) {
   if (!c.ownership) {
     const listing = wd?.stockExchanges?.find((s) => s.ticker) || (sec?.tickers?.[0] ? { exchange: sec.exchanges[0], ticker: sec.tickers[0] } : null);
     if (listing) c.ownership = `Public (${listing.exchange || 'listed'}: ${listing.ticker})`;
+    else if (ind?.ownership) c.ownership = ind.ownership;
   }
   const tree = familyTree(R);
   d.familyTree = tree;

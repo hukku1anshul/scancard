@@ -1,7 +1,8 @@
-// Contact-data validation: email syntax + MX records, phone numbers (libphonenumber), domain DNS.
+// Contact-data validation: email syntax + MX records, phone numbers (libphonenumber), domain DNS, and Indian PIN/GST/CIN checks.
 import dns from 'node:dns/promises';
 import { parsePhoneNumberFromString } from 'libphonenumber-js/max';
 import { FREE_MAIL } from './extract.js';
+import { decodePinCode } from './india.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const DISPOSABLE = new Set(['mailinator.com', 'guerrillamail.com', '10minutemail.com', 'tempmail.com', 'yopmail.com', 'trashmail.com', 'sharklasers.com', 'getnada.com']);
@@ -14,7 +15,10 @@ const TLD_COUNTRY = {
 const ADDRESS_COUNTRY = [
   [/\b(usa|united states|u\.s\.a?\.?)\b|\b[A-Z]{2}\s\d{5}(-\d{4})?\b/i, 'US'],
   [/united kingdom|\bU\.?K\.?\b|england|scotland|wales|london\b|[A-Z]{1,2}\d[A-Z\d]?\s\d[A-Z]{2}\b/i, 'GB'],
-  [/\bindia\b|bengaluru|bangalore|mumbai|new delhi|hyderabad|chennai|pune|gurugram|gurgaon|noida/i, 'IN'],
+  [
+    /\bindia\b|bharat|bengaluru|bangalore|mumbai|navi mumbai|thane|new delhi|delhi ncr|hyderabad|secunderabad|chennai|pune|pimpri|chinchwad|gurugram|gurgaon|noida|greater noida|faridabad|ghaziabad|ahmedabad|surat|vadodara|baroda|rajkot|gandhinagar|vapi|ankleshwar|morbi|jaipur|udaipur|jodhpur|kota|bhiwadi|ludhiana|jalandhar|amritsar|chandigarh|mohali|panchkula|baddi|coimbatore|madurai|tiruppur|hosur|salem|tiruchirappalli|visakhapatnam|vizag|vijayawada|guntur|kochi|cochin|thiruvananthapuram|trivandrum|kozhikode|thrissur|kolkata|calcutta|howrah|durgapur|siliguri|bhubaneswar|cuttack|rourkela|indore|bhopal|gwalior|jabalpur|pithampur|nagpur|nashik|aurangabad|chhatrapati sambhajinagar|kolhapur|solapur|satara|lucknow|kanpur|agra|varanasi|prayagraj|meerut|dehradun|haridwar|roorkee|patna|ranchi|jamshedpur|dhanbad|bokaro|raipur|bhilai|guwahati|goa|panaji|maharashtra|karnataka|tamil nadu|telangana|gujarat|rajasthan|uttar pradesh|haryana|punjab|kerala|west bengal|madhya pradesh|andhra pradesh|odisha|bihar|jharkhand|chhattisgarh|assam|uttarakhand|himachal pradesh/i,
+    'IN',
+  ],
   [/\bcanada\b|ontario|quebec|british columbia|alberta/i, 'CA'],
   [/australia|new south wales|victoria, au|queensland|sydney|melbourne/i, 'AU'],
   [/germany|deutschland|berlin|münchen|munich|frankfurt|hamburg/i, 'DE'],
@@ -30,7 +34,11 @@ const ADDRESS_COUNTRY = [
 ];
 
 export function inferCountry(card) {
-  if (card.address) for (const [re, cc] of ADDRESS_COUNTRY) if (re.test(card.address)) return cc;
+  if (card.gstin || card.cin) return 'IN';
+  if (card.address) {
+    for (const [re, cc] of ADDRESS_COUNTRY) if (re.test(card.address)) return cc;
+    if (decodePinCode(card.address)) return 'IN';
+  }
   for (const p of card.phones || []) {
     if (p.number?.trim().startsWith('+')) {
       const ph = parsePhoneNumberFromString(p.number);
@@ -38,7 +46,8 @@ export function inferCountry(card) {
     }
   }
   const tld = card.domain?.split('.').pop();
-  return (tld && TLD_COUNTRY[tld]) || null;
+  if (tld && TLD_COUNTRY[tld]) return TLD_COUNTRY[tld];
+  return null;
 }
 
 const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error('timeout'), { code: 'ETIMEOUT' })), ms))]);
@@ -87,7 +96,7 @@ export async function validateCard(card) {
       e164: ph.number,
       international: ph.formatInternational(),
       country: ph.country || null,
-      lineType: ph.getType() || null,
+      lineType: p.type === 'whatsapp' ? 'WHATSAPP' : ph.getType() || null,
       valid,
       status: valid ? 'valid' : ph.isPossible() ? 'possible' : 'invalid',
     };

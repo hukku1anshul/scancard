@@ -1,24 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ScanLine, History as HistoryIcon, Settings as SettingsIcon, Sparkles, CheckCircle2 } from 'lucide-react';
+import { ScanLine, History as HistoryIcon, Settings as SettingsIcon, Sparkles, CheckCircle2, QrCode } from 'lucide-react';
 import ScanView, { type ScanContextInput } from './components/ScanView';
 import ProgressView from './components/ProgressView';
 import DossierView from './components/DossierView';
 import EditCardSheet from './components/EditCardSheet';
 import HistoryView from './components/HistoryView';
 import SettingsView from './components/SettingsView';
+import MyDigitalCardModal from './components/MyDigitalCardModal';
 import ShareTargetSheet, { type SharedLink } from './components/ShareTargetSheet';
 import { fetchHealth, pushToCrm, streamScan, type ScanPayload } from './lib/api';
 import { prepareImage } from './lib/image';
 import { loadHistory, loadSettings, saveHistory, saveSettings, uid } from './lib/storage';
-import type { Card, DossierTab, Health, MeetingNote, ScanLocation, ScanRecord, Settings, StepId, StepState } from './types';
+import type { Card, ContactRole, DossierTab, Health, MeetingNote, ScanLocation, ScanRecord, Settings, StepId, StepState } from './types';
 
 type View = 'scan' | 'processing' | 'dossier' | 'history' | 'settings';
 
 const STEP_DEFS: { id: StepId; label: string }[] = [
-  { id: 'extract', label: 'Reading card with Vision AI' },
+  { id: 'extract', label: 'Reading card & GSTIN/CIN with Vision AI' },
   { id: 'website', label: 'Crawling company website' },
-  { id: 'registry', label: 'Registries: GLEIF, Wikidata, SEC, D&B' },
-  { id: 'social', label: 'LinkedIn, social & people data' },
+  { id: 'registry', label: 'Registries: India MCA/GST, GLEIF, Wikidata, D&B' },
+  { id: 'social', label: 'LinkedIn, IndiaMART, social & people data' },
   { id: 'market', label: 'Customers, products & news' },
   { id: 'research', label: 'Google Search deep research' },
   { id: 'synthesize', label: 'AI synthesis of 360° dossier' },
@@ -42,9 +43,30 @@ function parseShareTarget(): SharedLink | null {
   return { url, kind, title: p.get('title') || '' };
 }
 
+/** Find an existing record in history that represents the same person/card (by email, phone, or exact name+company) to avoid duplicates at events. */
+function findDuplicateRecord(list: ScanRecord[], card: Card, excludeId?: string): ScanRecord | undefined {
+  const emails = new Set(card.emails.map((e) => e.toLowerCase()));
+  const phones = new Set(card.phones.map((p) => p.number.replace(/\D/g, '').slice(-10)).filter((d) => d.length >= 8));
+  const nameCo = card.fullName && card.company ? `${card.fullName.toLowerCase().trim()}|${card.company.toLowerCase().trim()}` : null;
+
+  return list.find((r) => {
+    if (r.id === excludeId || r.status === 'queued' || r.status === 'processing') return false;
+    if (r.card.emails.some((e) => emails.has(e.toLowerCase()))) return true;
+    if (r.card.phones.some((p) => phones.has(p.number.replace(/\D/g, '').slice(-10)))) return true;
+    if (nameCo && r.card.fullName && r.card.company) {
+      const rKey = `${r.card.fullName.toLowerCase().trim()}|${r.card.company.toLowerCase().trim()}`;
+      if (rKey === nameCo) return true;
+    }
+    return false;
+  });
+}
+
 interface JobMeta {
   event?: string | null;
+  booth?: string | null;
   location?: ScanLocation | null;
+  contactRole?: ContactRole | null;
+  actionItems?: string[];
   initialNotes?: MeetingNote[];
 }
 
@@ -56,6 +78,7 @@ export default function App() {
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [dossierTab, setDossierTab] = useState<DossierTab>('overview');
   const [editing, setEditing] = useState(false);
+  const [myQrOpen, setMyQrOpen] = useState(false);
   const [shared, setShared] = useState<SharedLink | null>(parseShareTarget);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -99,7 +122,7 @@ export default function App() {
   }, [settings]);
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 2500);
+    const t = setTimeout(() => setToast(null), 2800);
     return () => clearTimeout(t);
   }, [toast]);
 
@@ -141,28 +164,53 @@ export default function App() {
             } else if (evt.type === 'result' && card) {
               finished = true;
               const finalCard = card;
-              const recId = existingId || uid();
+              let targetId = existingId || uid();
+              let mergedDuplicate = false;
+
               setHistory((h) => {
-                const prev = existingId ? h.find((r) => r.id === existingId) : undefined;
+                const prev = existingId ? h.find((r) => r.id === existingId) : findDuplicateRecord(h, finalCard);
+                if (prev && !existingId) {
+                  targetId = prev.id;
+                  mergedDuplicate = true;
+                }
+                const mergedPhones = [...finalCard.phones];
+                for (const p of prev?.card.phones || []) {
+                  if (!mergedPhones.some((mp) => mp.number === p.number)) mergedPhones.push(p);
+                }
+                const mergedEmails = Array.from(new Set([...finalCard.emails, ...(prev?.card.emails || [])]));
+
                 const record: ScanRecord = {
-                  id: recId,
+                  id: targetId,
                   createdAt: prev?.createdAt || Date.now(),
                   thumb: thumb ?? prev?.thumb,
-                  card: finalCard,
+                  card: {
+                    ...finalCard,
+                    phones: mergedPhones,
+                    emails: mergedEmails,
+                    gstin: finalCard.gstin || prev?.card.gstin || null,
+                    cin: finalCard.cin || prev?.card.cin || null,
+                  },
                   dossier: evt.dossier,
                   demo: evt.demo,
                   status: 'done',
-                  event: prev?.event ?? meta?.event ?? null,
-                  location: prev?.location ?? meta?.location ?? null,
+                  event: meta?.event ?? prev?.event ?? null,
+                  booth: meta?.booth ?? prev?.booth ?? null,
+                  location: meta?.location ?? prev?.location ?? null,
                   priority: prev?.priority ?? null,
+                  contactRole: meta?.contactRole ?? prev?.contactRole ?? null,
+                  actionItems: Array.from(new Set([...(prev?.actionItems || []), ...(meta?.actionItems || [])])),
+                  dealValue: prev?.dealValue ?? null,
                   tags: prev?.tags ?? [],
                   followUpDate: prev?.followUpDate ?? null,
                   associatedContacts: prev?.associatedContacts ?? [],
-                  meetingNotes: prev?.meetingNotes ?? meta?.initialNotes ?? [],
+                  meetingNotes: [...(meta?.initialNotes || []), ...(prev?.meetingNotes || [])],
                 };
                 return [record, ...h.filter((r) => r.id !== record.id)];
               });
-              setCurrentId(recId);
+              if (mergedDuplicate) {
+                setToast('Merged with existing contact in History!');
+              }
+              setCurrentId(targetId);
               setDossierTab('overview');
               setView('dossier');
             }
@@ -213,9 +261,11 @@ export default function App() {
   const queueCount = history.filter((r) => r.status === 'queued' || r.status === 'processing').length;
 
   // ---------------------------------------------------------------- handlers
-  const onScanImages = async ({ images, event, location, initialNote }: ScanContextInput) => {
-    const thumb = (await prepareImage(images[0].dataUrl, 480, 0.7)).dataUrl;
-    const payload: ScanPayload = { images: images.map(({ data, mimeType }) => ({ data, mimeType })) };
+  const onScanImages = async ({ images, qrCard, event, booth, location, contactRole, actionItems, initialNote }: ScanContextInput) => {
+    const thumb = images?.[0] ? (await prepareImage(images[0].dataUrl, 480, 0.7)).dataUrl : undefined;
+    const payload: ScanPayload = qrCard && !images?.length
+      ? { card: qrCard }
+      : { images: (images || []).map(({ data, mimeType }) => ({ data, mimeType })), ...(qrCard ? { card: qrCard } : {}) };
     const initialNotes: MeetingNote[] = initialNote ? [{ id: uid(), text: initialNote, createdAt: Date.now() }] : [];
     if (settings.eventMode) {
       const id = uid();
@@ -225,10 +275,13 @@ export default function App() {
           id,
           createdAt: Date.now(),
           thumb,
-          card: emptyCard(),
+          card: qrCard || emptyCard(),
           status: 'queued',
           event: event || null,
+          booth: booth || null,
           location: location || null,
+          contactRole: contactRole || null,
+          actionItems: actionItems || [],
           meetingNotes: initialNotes,
           associatedContacts: [],
           tags: [],
@@ -238,7 +291,7 @@ export default function App() {
       setToast(`Card queued (${queueCount + 1} in progress). Keep scanning!`);
       return;
     }
-    runJob(payload, thumb, undefined, { event, location, initialNotes });
+    runJob(payload, thumb, undefined, { event, booth, location, contactRole, actionItems, initialNotes });
   };
 
   const retryQueued = (id: string) => {
@@ -274,10 +327,10 @@ export default function App() {
   };
 
   const title: Record<View, string> = {
-    scan: settings.eventMode ? 'Event mode — rapid scanning' : 'Scan a card',
+    scan: settings.eventMode ? 'Event mode — rapid scanning' : 'Scan card or QR badge',
     processing: 'Analyzing…',
     dossier: '360° Company & Contact Dossier',
-    history: 'Scanned cards & events history',
+    history: 'Scanned cards, events & ROI',
     settings: 'Settings',
   };
 
@@ -292,7 +345,14 @@ export default function App() {
             <div className="text-sm font-semibold">CardIntel</div>
             <div className="text-[11px] text-slate-500">{title[view]}</div>
           </div>
-          <div className="ml-auto flex gap-1.5">
+          <div className="ml-auto flex items-center gap-1.5">
+            <button
+              onClick={() => setMyQrOpen(true)}
+              className="flex items-center gap-1 rounded-full border border-indigo-400/30 bg-indigo-500/15 px-2.5 py-1 text-[11px] font-medium text-indigo-200 hover:bg-indigo-500/25"
+              title="Show My Digital Business Card QR"
+            >
+              <QrCode className="h-3.5 w-3.5" /> My Card
+            </button>
             {queueCount > 0 && <span className="rounded-full bg-indigo-500/20 px-2 py-0.5 text-[10px] font-medium text-indigo-200">{queueCount} processing</span>}
             {demoMode && <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-300">DEMO</span>}
           </div>
@@ -311,6 +371,7 @@ export default function App() {
             onToggleEventMode={() => updateSettings({ ...settings, eventMode: !settings.eventMode })}
             onChangeDefaultEvent={(defaultEvent) => updateSettings({ ...settings, defaultEvent })}
             onScan={onScanImages}
+            onOpenMyQr={() => setMyQrOpen(true)}
             onOpenSettings={() => setView('settings')}
             onOpenQueue={() => setView('history')}
           />
@@ -372,6 +433,14 @@ export default function App() {
           <SettingsView settings={settings} health={health} onSave={updateSettings} onClearHistory={() => { pending.current.clear(); setHistory([]); }} />
         )}
       </main>
+
+      {myQrOpen && (
+        <MyDigitalCardModal
+          settings={settings}
+          onSaveSettings={updateSettings}
+          onClose={() => setMyQrOpen(false)}
+        />
+      )}
 
       {editing && current && (
         <EditCardSheet

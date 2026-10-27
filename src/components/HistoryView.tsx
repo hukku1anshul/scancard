@@ -2,10 +2,11 @@ import { useMemo, useState } from 'react';
 import {
   Search, FileDown, Trash2, ScanLine, Loader2, AlertTriangle, RotateCcw, Clock,
   MapPin, Calendar, Building2, Users, StickyNote, Sparkles, UserPlus, Bell, Flame, Phone, Mail,
+  MessageSquare, Copy, Check, CheckSquare, Store,
 } from 'lucide-react';
 import type { DossierTab, LeadPriority, ScanRecord } from '../types';
 import { initials } from './ui';
-import { downloadFile, toCSV } from '../lib/export';
+import { downloadFile, generateEventDigest, toCSV } from '../lib/export';
 import { mapsUrl } from '../lib/geo';
 
 interface Props {
@@ -31,6 +32,7 @@ export default function HistoryView({ history, canRetry, onRetry, onOpen, onDele
   const [mode, setMode] = useState<GroupMode>('timeline');
   const [eventFilter, setEventFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
+  const [copiedEvent, setCopiedEvent] = useState<string | null>(null);
 
   const events = useMemo(() => {
     const s = new Set<string>();
@@ -57,8 +59,14 @@ export default function HistoryView({ history, canRetry, onRetry, onOpen, onDele
         r.card.jobTitle,
         r.dossier?.company.industry,
         r.event,
+        r.booth,
         r.location?.label,
+        r.card.gstin,
+        r.card.cin,
+        r.dossier?.company.gstin,
+        r.dossier?.company.cin,
         ...(r.tags || []),
+        ...(r.actionItems || []),
         ...r.card.emails,
         ...r.card.phones.map((p) => p.number),
         assocText,
@@ -107,13 +115,20 @@ export default function HistoryView({ history, canRetry, onRetry, onOpen, onDele
     return s.size;
   }, [history]);
 
+  const copyEventReport = async (evtName: string, records: ScanRecord[]) => {
+    const digest = generateEventDigest(evtName, records);
+    await navigator.clipboard?.writeText(digest);
+    setCopiedEvent(evtName);
+    setTimeout(() => setCopiedEvent(null), 2000);
+  };
+
   if (!history.length) {
     return (
       <div className="flex flex-col items-center px-8 pt-20 text-center">
         <ScanLine className="h-12 w-12 text-slate-600" />
         <p className="mt-4 text-slate-400">No scanned cards yet.</p>
         <p className="mt-1 text-xs text-slate-500">
-          Scan a business card to capture date, GPS location, event, 360° company dossier, and colleagues met.
+          Scan a business card to capture date, GPS location, event, 360° company dossier, GSTIN/CIN, and colleagues met.
         </p>
         <button onClick={onScan} className="mt-4 rounded-xl bg-indigo-500 px-5 py-2.5 text-sm font-medium">
           Scan your first card
@@ -151,14 +166,14 @@ export default function HistoryView({ history, canRetry, onRetry, onOpen, onDele
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search name, company, event, GPS city, notes…"
+            placeholder="Search name, company, event, GSTIN, city, notes…"
             className="w-full bg-transparent py-2.5 text-sm outline-none"
           />
         </div>
         <button
           onClick={() => downloadFile(`cardintel-contacts-${new Date().toISOString().slice(0, 10)}.csv`, toCSV(filtered), 'text/csv')}
           className="flex items-center gap-1 rounded-xl bg-white/5 px-3 text-sm text-slate-300 hover:bg-white/10"
-          title="Export CSV with events, GPS locations, colleagues & notes"
+          title="Export CSV with events, GPS locations, GSTIN/CIN, colleagues & notes"
         >
           <FileDown className="h-4 w-4" /> CSV
         </button>
@@ -168,7 +183,7 @@ export default function HistoryView({ history, canRetry, onRetry, onOpen, onDele
       <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-ink-800/90 p-1">
         {([
           ['timeline', 'All Cards', Clock],
-          ['event', 'By Event', Calendar],
+          ['event', 'By Event & ROI', Calendar],
           ['company', 'By Company', Building2],
         ] as const).map(([id, label, Icon]) => (
           <button
@@ -240,28 +255,72 @@ export default function HistoryView({ history, canRetry, onRetry, onOpen, onDele
         </ul>
       )}
 
-      {/* ============================================================ MODE 2: GROUPED BY EVENT */}
+      {/* ============================================================ MODE 2: GROUPED BY EVENT + END-OF-DAY ROI DIGEST */}
       {mode === 'event' && (
         <div className="space-y-4">
           {byEvent.map(([evtName, records]) => {
             const locations = Array.from(new Set(records.map((r) => r.location?.label).filter(Boolean)));
+            const hotLeads = records.filter((r) => r.priority === 'hot').length;
+            const actionCount = records.reduce((a, r) => a + (r.actionItems?.length || 0), 0);
+            const deals = records.map((r) => r.dealValue).filter(Boolean);
+            const waDigestUrl = `https://wa.me/?text=${encodeURIComponent(generateEventDigest(evtName, records))}`;
+
             return (
-              <div key={evtName} className="space-y-2 rounded-2xl border border-white/10 bg-ink-800/40 p-3">
-                <div className="flex items-center justify-between border-b border-white/5 pb-2">
-                  <div>
-                    <div className="flex items-center gap-1.5 font-semibold text-indigo-200">
-                      <Calendar className="h-4 w-4 text-indigo-400" /> {evtName}
-                    </div>
-                    {locations.length > 0 && (
-                      <div className="mt-0.5 flex items-center gap-1 text-xs text-emerald-300">
-                        <MapPin className="h-3 w-3" /> {locations.join(' · ')}
+              <div key={evtName} className="space-y-2.5 rounded-2xl border border-white/10 bg-ink-800/50 p-3.5">
+                <div className="flex flex-col gap-2 border-b border-white/10 pb-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-1.5 font-semibold text-indigo-200">
+                        <Calendar className="h-4 w-4 text-indigo-400" /> {evtName}
                       </div>
+                      {locations.length > 0 && (
+                        <div className="mt-0.5 flex items-center gap-1 text-xs text-emerald-300">
+                          <MapPin className="h-3 w-3" /> {locations.join(' · ')}
+                        </div>
+                      )}
+                    </div>
+                    <span className="rounded-full bg-indigo-500/20 px-2.5 py-0.5 text-xs font-medium text-indigo-200">
+                      {records.length} card{records.length === 1 ? '' : 's'}
+                    </span>
+                  </div>
+
+                  {/* Event ROI mini-metrics */}
+                  <div className="flex flex-wrap gap-2 text-[11px]">
+                    <span className="rounded-lg bg-rose-500/15 px-2 py-0.5 text-rose-200">🔥 {hotLeads} Hot Leads</span>
+                    <span className="rounded-lg bg-emerald-500/15 px-2 py-0.5 text-emerald-200">✅ {actionCount} Action Items</span>
+                    {deals.length > 0 && (
+                      <span className="rounded-lg bg-amber-500/15 px-2 py-0.5 text-amber-200">
+                        💰 Deals: {deals.slice(0, 3).join(', ')}
+                      </span>
                     )}
                   </div>
-                  <span className="rounded-full bg-indigo-500/20 px-2.5 py-0.5 text-xs font-medium text-indigo-200">
-                    {records.length} card{records.length === 1 ? '' : 's'}
-                  </span>
+
+                  {/* 1-Tap End-of-Day Event Report Actions */}
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    <button
+                      onClick={() => copyEventReport(evtName, records)}
+                      className="flex items-center gap-1 rounded-xl bg-indigo-500/20 px-2.5 py-1.5 text-[11px] font-medium text-indigo-200 hover:bg-indigo-500/30"
+                    >
+                      {copiedEvent === evtName ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                      {copiedEvent === evtName ? 'Digest Copied!' : 'Copy Event Digest'}
+                    </button>
+                    <a
+                      href={waDigestUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 rounded-xl bg-emerald-500/20 px-2.5 py-1.5 text-[11px] font-medium text-emerald-200 hover:bg-emerald-500/30"
+                    >
+                      <MessageSquare className="h-3.5 w-3.5" /> Share Report on WhatsApp
+                    </a>
+                    <button
+                      onClick={() => downloadFile(`event-${evtName.replace(/\W+/g, '_')}.csv`, toCSV(records), 'text/csv')}
+                      className="flex items-center gap-1 rounded-xl bg-white/5 px-2.5 py-1.5 text-[11px] text-slate-300 hover:bg-white/10"
+                    >
+                      <FileDown className="h-3.5 w-3.5" /> Event CSV
+                    </button>
+                  </div>
                 </div>
+
                 <ul className="space-y-2">
                   {records.map((r) => (
                     <CardHistoryItem
@@ -286,6 +345,7 @@ export default function HistoryView({ history, canRetry, onRetry, onOpen, onDele
           {byCompany.map(({ name, records }) => {
             const primary = records.find((r) => r.dossier) || records[0];
             const d = primary.dossier;
+            const gstin = primary.card.gstin || d?.company.gstin;
             const allColleagues = records.flatMap((r) =>
               (r.associatedContacts || []).map((c) => ({ ...c, parentRecord: r })),
             );
@@ -299,7 +359,7 @@ export default function HistoryView({ history, canRetry, onRetry, onOpen, onDele
                       <h3 className="truncate font-semibold text-white">{name}</h3>
                     </div>
                     <div className="mt-0.5 text-xs text-slate-400">
-                      {[d?.company.industry, d?.company.headquarters, d?.company.employeeRange ? `${d.company.employeeRange} emp` : null]
+                      {[d?.company.industry, d?.company.headquarters, d?.company.revenueRange, gstin ? `GST: ${gstin}` : null]
                         .filter(Boolean)
                         .join(' · ') || 'Company'}
                     </div>
@@ -361,6 +421,11 @@ export default function HistoryView({ history, canRetry, onRetry, onOpen, onDele
                         </div>
                         <div className="flex shrink-0 gap-1">
                           {c.phone && (
+                            <a href={`https://wa.me/${c.phone.replace(/[^\d]/g, '')}`} target="_blank" rel="noopener noreferrer" className="rounded-lg bg-emerald-500/15 p-1.5 text-emerald-300">
+                              <MessageSquare className="h-3.5 w-3.5" />
+                            </a>
+                          )}
+                          {c.phone && (
                             <a href={`tel:${c.phone.replace(/[^\d+]/g, '')}`} className="rounded-lg bg-white/5 p-1.5 text-slate-300">
                               <Phone className="h-3.5 w-3.5" />
                             </a>
@@ -405,6 +470,9 @@ function CardHistoryItem({
   const locUrl = mapsUrl(r.location);
   const colleaguesCount = r.associatedContacts?.length || 0;
   const notesCount = r.meetingNotes?.length || 0;
+  const actionsCount = r.actionItems?.length || 0;
+  const gstin = r.card.gstin || r.dossier?.company.gstin;
+  const waNumber = r.card.phones[0]?.number.replace(/[^\d]/g, '');
 
   return (
     <li
@@ -444,6 +512,16 @@ function CardHistoryItem({
                     {PRIORITY_BADGE[r.priority].label}
                   </span>
                 )}
+                {r.contactRole && (
+                  <span className="rounded-full bg-fuchsia-500/15 px-2 py-0.2 text-[10px] font-medium capitalize text-fuchsia-200">
+                    {r.contactRole}
+                  </span>
+                )}
+                {r.dealValue && (
+                  <span className="rounded-full bg-emerald-500/15 px-2 py-0.2 text-[10px] font-medium text-emerald-200">
+                    {r.dealValue}
+                  </span>
+                )}
               </div>
               <div className="truncate text-xs text-slate-300">
                 {[r.card.jobTitle, companyName].filter(Boolean).join(' · ') || ' '}
@@ -466,7 +544,7 @@ function CardHistoryItem({
             </div>
           </div>
 
-          {/* Date, Time, Event & GPS Location metadata row */}
+          {/* Date, Time, Event, Booth, GPS Location & GSTIN metadata row */}
           <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-slate-400">
             <span className="inline-flex items-center gap-1">
               <Clock className="h-3 w-3 text-slate-500" />
@@ -484,6 +562,12 @@ function CardHistoryItem({
               </button>
             )}
 
+            {r.booth && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-fuchsia-500/15 px-2 py-0.5 text-[10px] font-medium text-fuchsia-200">
+                <Store className="h-2.5 w-2.5" /> {r.booth}
+              </span>
+            )}
+
             {r.location?.label && (
               <a
                 href={locUrl}
@@ -496,6 +580,12 @@ function CardHistoryItem({
               </a>
             )}
 
+            {gstin && (
+              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 font-mono text-[10px] text-amber-200">
+                GST: {gstin}
+              </span>
+            )}
+
             {r.followUpDate && (
               <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-200">
                 <Bell className="h-2.5 w-2.5" /> Follow-up: {r.followUpDate}
@@ -503,7 +593,7 @@ function CardHistoryItem({
             )}
           </div>
 
-          {/* Status or Colleagues/Notes summary */}
+          {/* Status or Colleagues/Notes/Action Items summary */}
           {status !== 'done' ? (
             <div className="mt-1 text-xs">
               {status === 'queued' && <span className="text-slate-400">Queued…</span>}
@@ -515,8 +605,13 @@ function CardHistoryItem({
               )}
             </div>
           ) : (
-            (colleaguesCount > 0 || notesCount > 0) && (
+            (colleaguesCount > 0 || notesCount > 0 || actionsCount > 0) && (
               <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
+                {actionsCount > 0 && (
+                  <span className="inline-flex items-center gap-1 text-emerald-300">
+                    <CheckSquare className="h-3 w-3" /> {r.actionItems!.join(', ')}
+                  </span>
+                )}
                 {colleaguesCount > 0 && (
                   <span className="inline-flex items-center gap-1 text-fuchsia-300">
                     <Users className="h-3 w-3" /> +{colleaguesCount} colleague{colleaguesCount > 1 ? 's' : ''} ({r.associatedContacts!.map((c) => c.name.split(' ')[0]).join(', ')})
@@ -533,21 +628,32 @@ function CardHistoryItem({
         </div>
       </div>
 
-      {/* Action links footer: Revisit Company 360° Details OR Add Colleague / Number / Note */}
+      {/* Action links footer: Revisit Company 360° Details, Add Colleague/Info, or 1-Tap WhatsApp */}
       {openable && (
-        <div className="mt-2.5 flex items-center gap-2 border-t border-white/5 pt-2.5">
+        <div className="mt-2.5 flex items-center gap-1.5 border-t border-white/5 pt-2.5">
           <button
             onClick={() => onOpen(r, 'overview')}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-indigo-500/15 py-1.5 text-xs font-medium text-indigo-200 transition hover:bg-indigo-500/25"
+            className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-indigo-500/15 py-1.5 text-xs font-medium text-indigo-200 transition hover:bg-indigo-500/25"
           >
-            <Building2 className="h-3.5 w-3.5" /> Company 360° Details
+            <Building2 className="h-3.5 w-3.5" /> Company 360°
           </button>
           <button
             onClick={() => onOpen(r, 'notes')}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-white/5 py-1.5 text-xs font-medium text-slate-200 transition hover:bg-white/10"
+            className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-white/5 py-1.5 text-xs font-medium text-slate-200 transition hover:bg-white/10"
           >
-            <UserPlus className="h-3.5 w-3.5 text-fuchsia-300" /> + Add Colleague / Info
+            <UserPlus className="h-3.5 w-3.5 text-fuchsia-300" /> + Team / Info
           </button>
+          {waNumber && (
+            <a
+              href={`https://wa.me/${waNumber}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-1 rounded-xl bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-emerald-200 transition hover:bg-emerald-500/25"
+              title="Message on WhatsApp"
+            >
+              <MessageSquare className="h-3.5 w-3.5" /> WA
+            </a>
+          )}
         </div>
       )}
     </li>

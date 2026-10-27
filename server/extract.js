@@ -1,7 +1,8 @@
 import { geminiJSON } from './gemini.js';
+import { expandIndianPhones, extractIndianIdsFromText } from './india.js';
 
-const PROMPT = `You are an expert business card parser. Extract every piece of contact information from the business card image(s) (front and/or back side).
-Cards can have ANY layout: horizontal, vertical, rotated, multilingual, minimalist, logo-only company names, dark backgrounds, embossed/metallic print, QR codes.
+const PROMPT = `You are an expert business card parser. Extract every piece of contact and statutory information from the business card image(s) (front and/or back side).
+Cards can have ANY layout: horizontal, vertical, rotated, multilingual (including Hindi, Gujarati, Marathi, Tamil, Telugu, Kannada, Bengali, Arabic, Chinese, Japanese, European scripts), minimalist, logo-only company names, dark backgrounds, embossed/metallic print, QR codes.
 Read logos for the company name when it is not printed as text. If a QR code's content is legible as text/URL, use it.
 
 Return ONLY JSON in exactly this shape:
@@ -14,9 +15,11 @@ Return ONLY JSON in exactly this shape:
   "company": string|null,
   "tagline": string|null,
   "emails": string[],
-  "phones": [{"type": "mobile"|"work"|"fax"|"other", "number": string}],
+  "phones": [{"type": "mobile"|"work"|"whatsapp"|"fax"|"other", "number": string}],
   "website": string|null,
   "address": string|null,
+  "gstin": string|null,
+  "cin": string|null,
   "socials": {"linkedin": string|null, "twitter": string|null, "facebook": string|null, "instagram": string|null, "other": string[]},
   "language": string|null,
   "notes": string|null,
@@ -24,15 +27,17 @@ Return ONLY JSON in exactly this shape:
 }
 Rules:
 - Never invent data. Use null or [] when absent.
-- Keep names in their original script; add a romanized form in "notes" if non-Latin.
-- Normalize phone numbers to international format (+CC ...) when the country is inferable from address/website TLD.
+- Keep names in their original script; add an English/romanized transliteration in "notes" if non-Latin.
+- Split multiple phone numbers (e.g. "+91 98201 12345 / 98201 67890" or "022-26543210 / 11") into separate entries in "phones". If a number has a WhatsApp icon or "WA", set type="whatsapp".
+- Normalize phone numbers to international format (+CC ...) when the country is inferable from address, PIN code, GSTIN, CIN, or website TLD (e.g. +91 for India).
+- If an Indian GSTIN (15-character tax ID like 27AABCU9603R1ZM) or Corporate Identity Number (CIN like U72200KA2018PTC112345 or LLPIN) is printed on the card, extract it into "gstin" and "cin".
 - "website" must be a full URL (https://...).
 - "confidence" is 0..1 for overall extraction quality.`;
 
 export const FREE_MAIL = new Set([
   'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.in', 'yahoo.co.uk', 'outlook.com', 'hotmail.com', 'live.com', 'msn.com',
-  'icloud.com', 'me.com', 'aol.com', 'proton.me', 'protonmail.com', 'yandex.com', 'zoho.com', 'gmx.com', 'gmx.de', 'mail.com',
-  'qq.com', '163.com', '126.com', 'rediffmail.com', 'web.de',
+  'icloud.com', 'me.com', 'aol.com', 'proton.me', 'protonmail.com', 'yandex.com', 'zoho.com', 'zohomail.in', 'gmx.com', 'gmx.de', 'mail.com',
+  'qq.com', '163.com', '126.com', 'rediffmail.com', 'sify.com', 'bsnl.in', 'web.de',
 ]);
 
 export async function extractCard(images, cfg) {
@@ -49,6 +54,12 @@ const str = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
 
 export function normalizeCard(c = {}) {
   const socials = c.socials || {};
+  const rawPhones = (Array.isArray(c.phones) ? c.phones : [])
+    .map((p) => (typeof p === 'string' ? { type: 'other', number: p } : { type: str(p?.type)?.toLowerCase() || 'other', number: str(p?.number) }))
+    .filter((p) => p.number);
+
+  const fallbackIds = extractIndianIdsFromText([c.gstin, c.cin, c.notes, c.address, c.tagline].filter(Boolean).join(' '));
+
   const card = {
     fullName: str(c.fullName),
     firstName: str(c.firstName),
@@ -58,12 +69,12 @@ export function normalizeCard(c = {}) {
     company: str(c.company),
     tagline: str(c.tagline),
     emails: (Array.isArray(c.emails) ? c.emails : []).map(str).filter(Boolean),
-    phones: (Array.isArray(c.phones) ? c.phones : [])
-      .map((p) => (typeof p === 'string' ? { type: 'other', number: p } : { type: str(p?.type) || 'other', number: str(p?.number) }))
-      .filter((p) => p.number),
+    phones: expandIndianPhones(rawPhones),
     website: str(c.website),
     domain: null,
     address: str(c.address),
+    gstin: str(c.gstin)?.toUpperCase() || fallbackIds.gstin || null,
+    cin: str(c.cin)?.toUpperCase() || fallbackIds.cin || null,
     socials: {
       linkedin: str(socials.linkedin),
       twitter: str(socials.twitter),

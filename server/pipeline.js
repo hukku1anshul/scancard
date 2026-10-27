@@ -4,14 +4,15 @@ import { webSearch } from './search.js';
 import { geminiGrounded } from './gemini.js';
 import { synthesize, findGaps, refine, finalize } from './synthesize.js';
 import { gleif, wikidata, secEdgar, companiesHouse, openCorporates } from './registries.js';
+import { buildIndiaRegistryRecord } from './india.js';
 import { dnb, apolloOrg, apolloPerson, pdlCompany, pdlPerson } from './providers.js';
 import { validateCard, inferCountry } from './validate.js';
-import { companyCacheKey, cacheGet, cacheSet } from './cache.js';
+import { companyCacheKey, cacheSet, cacheGet } from './cache.js';
 import { searchProviderName, providerSignature } from './config.js';
 import { settle, ok } from './http.js';
 import { runDemo } from './demo.js';
 
-const NON_OFFICIAL = /(linkedin|facebook|twitter|x\.com|instagram|youtube|wikipedia|dnb\.com|zoominfo|crunchbase|bloomberg|glassdoor|indeed|yelp|apollo\.io|rocketreach|opencorporates|craft\.co|owler|pitchbook|amazon|justdial|indiamart|tofler|zaubacorp)/i;
+const NON_OFFICIAL = /(linkedin|facebook|twitter|x\.com|instagram|youtube|wikipedia|dnb\.com|zoominfo|crunchbase|bloomberg|glassdoor|indeed|yelp|apollo\.io|rocketreach|opencorporates|craft\.co|owler|pitchbook|amazon|justdial|indiamart|tradeindia|tofler|zaubacorp|falconebiz|thecompanycheck|cleartax)/i;
 
 /**
  * Full scan + enrichment pipeline. Emits NDJSON events via `emit`.
@@ -86,10 +87,18 @@ export async function runScan(body, cfg, emit, isClosed = () => false) {
 
     // Registries + company data providers + registry searches
     tasks.push((async () => {
-      step('registry', 'running', 'Querying GLEIF, Wikidata, SEC EDGAR' + (cfg.dnbKey ? ', D&B' : '') + '…');
+      const isIndia = country === 'IN' || Boolean(card.gstin || card.cin);
+      step('registry', 'running', 'Querying GLEIF, Wikidata' + (isIndia ? ', India MCA/GST' : ', SEC EDGAR') + (cfg.dnbKey ? ', D&B' : '') + '…');
       const name = company();
       const wd = await settle(wikidata(name, card.domain));
       const tickers = ok(wd) ? wd.stockExchanges.map((s) => s.ticker).filter(Boolean) : [];
+      const regQueries = [
+        `${co} ${card.domain || ''} company profile headquarters employees revenue`.trim(),
+        isIndia
+          ? `${co} CIN GSTIN directors paid up capital site:zaubacorp.com OR site:tofler.in OR site:indiamart.com`
+          : `${co} site:dnb.com`,
+        `${co} site:opencorporates.com OR site:crunchbase.com`,
+      ];
       const [gl, sec, ch, oc, dnbR, ap, pdl, searches] = await Promise.all([
         settle(gleif(name, country, ok(wd) ? wd.lei : null)),
         ok(wd) && (wd.secCik || tickers.length) ? settle(secEdgar(name, { cik: wd.secCik, tickers })) : !country || country === 'US' ? settle(secEdgar(name)) : null,
@@ -98,13 +107,16 @@ export async function runScan(body, cfg, emit, isClosed = () => false) {
         cfg.dnbKey && cfg.dnbSecret ? settle(dnb(card, cfg, country)) : null,
         cfg.apolloKey && card.domain ? settle(apolloOrg(card.domain, cfg.apolloKey)) : null,
         cfg.pdlKey && card.domain ? settle(pdlCompany(card.domain, cfg.pdlKey)) : null,
-        runQueries([`${co} ${card.domain || ''} company profile headquarters employees revenue`.trim(), `${co} site:dnb.com`, `${co} site:opencorporates.com OR site:crunchbase.com`]),
+        runQueries(regQueries),
       ]);
-      evidence.registry = { wikidata: wd, gleif: gl, sec, companiesHouse: ch, openCorporates: oc, dnb: dnbR };
+      const indiaReg = isIndia ? buildIndiaRegistryRecord(card, searches) : null;
+      if (indiaReg?.cin && !card.cin) card.cin = indiaReg.cin;
+      if (indiaReg?.gstin && !card.gstin) card.gstin = indiaReg.gstin;
+      evidence.registry = { wikidata: wd, gleif: gl, sec, companiesHouse: ch, openCorporates: oc, dnb: dnbR, india: indiaReg };
       evidence.providers.company = { apollo: ap, pdl };
       evidence.searches.registry = searches;
       const matched = [
-        ['D&B', dnbR], ['GLEIF', gl], ['Wikidata', wd], ['SEC', sec], ['Companies House', ch], ['OpenCorporates', oc], ['Apollo', ap], ['PDL', pdl],
+        ['India MCA/GST', indiaReg], ['D&B', dnbR], ['GLEIF', gl], ['Wikidata', wd], ['SEC', sec], ['Companies House', ch], ['OpenCorporates', oc], ['Apollo', ap], ['PDL', pdl],
       ].filter(([, v]) => ok(v)).map(([k]) => k);
       const errs = [['D&B', dnbR], ['Apollo', ap], ['PDL', pdl], ['Companies House', ch], ['OpenCorporates', oc]].filter(([, v]) => v?.error).map(([k]) => k);
       step('registry', matched.length || count(searches) ? 'done' : 'error',
@@ -145,7 +157,13 @@ export async function runScan(body, cfg, emit, isClosed = () => false) {
   tasks.push((async () => {
     if (!cfg.grounding) return step('research', 'skipped', 'Google Search grounding disabled in Settings');
     step('research', 'running', 'Gemini + Google Search deep research…');
-    const where = [card.domain && `website ${card.domain}`, country && `country ${country}`].filter(Boolean).join(', ');
+    const isIndia = country === 'IN' || Boolean(card.gstin || card.cin);
+    const where = [
+      card.domain && `website ${card.domain}`,
+      country && `country ${country}`,
+      card.gstin && `GSTIN ${card.gstin}`,
+      card.cin && `CIN ${card.cin}`,
+    ].filter(Boolean).join(', ');
     const [coR, peR] = await Promise.all([
       evidence.research.company
         ? evidence.research.company
@@ -155,7 +173,7 @@ export async function runScan(body, cfg, emit, isClosed = () => false) {
             prompt: `Research the company "${company()}"${where ? ` (${where})` : ''} using Google Search. Report concise bullet points with dates and figures:
 1) What they do: products and services
 2) Target customers / industries, and named customers or case studies
-3) Headquarters, founding year, employee count, revenue or funding, ownership / parent company
+3) Headquarters, founding year, employee count, revenue or funding (${isIndia ? 'include INR ₹ Cr / Lakh figures, MCA CIN, GSTIN, paid-up capital, directors, and BSE/NSE ticker if Indian' : 'include currency'}), ownership / parent company
 4) Notable news from the last 12 months
 5) LinkedIn company page URL and other official social profiles
 6) Main competitors
@@ -166,7 +184,7 @@ If a result may refer to a different company with a similar name, say so explici
             apiKey: cfg.geminiKey,
             model: cfg.geminiModel,
             prompt: `Using Google Search, find public professional information about ${card.fullName}${card.jobTitle ? `, ${card.jobTitle}` : ''} at ${company()}${card.domain ? ` (${card.domain})` : ''}.
-Report: current role and responsibilities, previous roles, LinkedIn profile URL, talks / articles / press mentions, education if public.
+Report: current role and responsibilities, previous roles / DIN directorships, LinkedIn profile URL, talks / articles / press mentions, education if public.
 Only include information that clearly refers to this person at this company; state uncertainty otherwise. Bullet points.`,
           }))
         : null,

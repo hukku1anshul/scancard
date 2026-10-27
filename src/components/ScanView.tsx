@@ -1,17 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Camera, ImagePlus, ScanLine, Sparkles, X, Video, Building2, Globe, Users, Target, Layers, ChevronRight,
-  MapPin, Calendar, LocateFixed, Loader2, StickyNote,
+  MapPin, Calendar, LocateFixed, Loader2, StickyNote, QrCode, Store, CheckSquare,
 } from 'lucide-react';
 import CameraCapture from './CameraCapture';
 import { prepareImage, type PreparedImage } from '../lib/image';
 import { captureGeoLocation } from '../lib/geo';
-import type { ScanLocation } from '../types';
+import { detectQrFromImageSource, parseQrPayload } from '../lib/qr';
+import type { Card, ContactRole, ScanLocation } from '../types';
 
 export interface ScanContextInput {
-  images: PreparedImage[];
+  images?: PreparedImage[];
+  qrCard?: Card;
   event?: string | null;
+  booth?: string | null;
   location?: ScanLocation | null;
+  contactRole?: ContactRole | null;
+  actionItems?: string[];
   initialNote?: string;
 }
 
@@ -25,13 +30,32 @@ interface Props {
   onToggleEventMode: () => void;
   onChangeDefaultEvent: (evt: string) => void;
   onScan: (input: ScanContextInput) => void;
+  onOpenMyQr: () => void;
   onOpenSettings: () => void;
   onOpenQueue: () => void;
 }
 
 const SAMPLES = [
+  { src: '/samples/card-bharat.svg', label: '🇮🇳 Indian Card (GST + CIN)' },
   { src: '/samples/card-northwind.svg', label: 'Horizontal card' },
   { src: '/samples/card-vertical.svg', label: 'Vertical card' },
+];
+
+const QUICK_ACTIONS = [
+  'Send Catalog / Brochure',
+  'Send Price List / Quote',
+  'Book Demo',
+  'Share Sample',
+  'WhatsApp Intro',
+  'Factory / Office Visit',
+];
+
+const ROLES: { id: ContactRole; label: string }[] = [
+  { id: 'buyer', label: 'Buyer / Client' },
+  { id: 'distributor', label: 'Distributor / Dealer' },
+  { id: 'partner', label: 'Partner' },
+  { id: 'vendor', label: 'Vendor' },
+  { id: 'investor', label: 'Investor' },
 ];
 
 export default function ScanView({
@@ -44,6 +68,7 @@ export default function ScanView({
   onToggleEventMode,
   onChangeDefaultEvent,
   onScan,
+  onOpenMyQr,
   onOpenSettings,
   onOpenQueue,
 }: Props) {
@@ -52,11 +77,19 @@ export default function ScanView({
   const [camera, setCamera] = useState<null | 'front' | 'back'>(null);
   const [busy, setBusy] = useState(false);
 
-  // Event, GPS Location & quick note context for this scan
+  // Event, Booth, GPS Location, Role & Action Checklist context
   const [eventName, setEventName] = useState(defaultEvent || '');
+  const [booth, setBooth] = useState('');
   const [location, setLocation] = useState<ScanLocation | null>(null);
   const [geoBusy, setGeoBusy] = useState(false);
+  const [contactRole, setContactRole] = useState<ContactRole | null>(null);
+  const [actionItems, setActionItems] = useState<string[]>([]);
   const [quickNote, setQuickNote] = useState('');
+
+  // QR Badge / vCard decoded state
+  const [decodedQrCard, setDecodedQrCard] = useState<Card | null>(null);
+  const [showQrInput, setShowQrInput] = useState(false);
+  const [qrTextInput, setQrTextInput] = useState('');
 
   const photoInput = useRef<HTMLInputElement>(null);
   const uploadInput = useRef<HTMLInputElement>(null);
@@ -82,19 +115,31 @@ export default function ScanView({
     }
   }, [autoGeo]);
 
+  const toggleAction = (item: string) => {
+    setActionItems((prev) => (prev.includes(item) ? prev.filter((x) => x !== item) : [...prev, item]));
+  };
+
   const submit = () => {
-    if (!front) return;
+    if (!front && !decodedQrCard) return;
     const cleanEvt = eventName.trim() || null;
     if (cleanEvt && cleanEvt !== defaultEvent) {
       onChangeDefaultEvent(cleanEvt);
     }
     onScan({
-      images: [front, back].filter(Boolean) as PreparedImage[],
+      images: front ? ([front, back].filter(Boolean) as PreparedImage[]) : undefined,
+      qrCard: decodedQrCard || undefined,
       event: cleanEvt,
+      booth: booth.trim() || null,
       location,
+      contactRole,
+      actionItems,
       initialNote: quickNote.trim() || undefined,
     });
     setQuickNote('');
+    setBooth('');
+    setActionItems([]);
+    setContactRole(null);
+    setDecodedQrCard(null);
     if (eventMode) {
       setFront(null);
       setBack(null);
@@ -106,6 +151,12 @@ export default function ScanView({
     try {
       const img = await prepareImage(blob);
       side === 'front' ? setFront(img) : setBack(img);
+      // Also check if image contains a QR badge / vCard QR code
+      const qrRaw = await detectQrFromImageSource(blob);
+      if (qrRaw) {
+        const parsed = parseQrPayload(qrRaw);
+        if (parsed) setDecodedQrCard(parsed);
+      }
     } finally {
       setBusy(false);
     }
@@ -122,6 +173,17 @@ export default function ScanView({
     (mode === 'photo' ? photoInput : uploadInput).current?.click();
   };
 
+  const handleManualQrParse = () => {
+    const parsed = parseQrPayload(qrTextInput);
+    if (parsed) {
+      setDecodedQrCard(parsed);
+      setShowQrInput(false);
+      setQrTextInput('');
+    } else {
+      alert('Could not parse vCard, MeCard, or LinkedIn URL from text. Please check the format.');
+    }
+  };
+
   const side = front ? 'back' : 'front';
 
   return (
@@ -130,27 +192,33 @@ export default function ScanView({
         <button onClick={onOpenSettings} className="flex w-full items-start gap-3 rounded-2xl border border-amber-400/20 bg-amber-500/10 p-3 text-left text-sm text-amber-100">
           <Sparkles className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
-            <b>Demo mode.</b> Scans return a sample dossier. Tap here to add your Gemini API key and scan real cards.
+            <b>Demo mode.</b> Scans return a rich Indian MCA/GST sample dossier. Tap here to add your Gemini API key and scan real cards.
           </span>
         </button>
       )}
 
-      {/* Event & GPS Location Context Bar */}
+      {/* Event, Booth/Stall, GPS Location & Quick Follow-up Checklist Bar */}
       <div className="space-y-2.5 rounded-2xl border border-white/10 bg-ink-800/80 p-3.5">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold uppercase tracking-wide text-indigo-300">Scan Context (Event & GPS)</span>
-          <span className="text-[11px] text-slate-400">{new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+          <span className="text-xs font-semibold uppercase tracking-wide text-indigo-300">Event, Booth & GPS Context</span>
+          <button
+            type="button"
+            onClick={onOpenMyQr}
+            className="flex items-center gap-1 rounded-full bg-indigo-500/20 px-2.5 py-1 text-[11px] font-medium text-indigo-200 hover:bg-indigo-500/30"
+          >
+            <QrCode className="h-3 w-3" /> Show My QR Card
+          </button>
         </div>
 
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           {/* Event / Conference input */}
-          <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-ink-900/90 px-3 py-2">
+          <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-ink-900/90 px-3 py-2 sm:col-span-2">
             <Calendar className="h-4 w-4 shrink-0 text-indigo-300" />
             <input
               value={eventName}
               onChange={(e) => setEventName(e.target.value)}
               onBlur={() => eventName.trim() !== defaultEvent && onChangeDefaultEvent(eventName.trim())}
-              placeholder="Event / Expo (e.g. Hannover Messe)"
+              placeholder="Event / Expo (e.g. Bharat Mobility, Elecrama, SaaSBoomi)"
               className="w-full bg-transparent text-xs text-slate-100 outline-none placeholder:text-slate-500"
             />
             {eventName && (
@@ -160,32 +228,43 @@ export default function ScanView({
             )}
           </div>
 
-          {/* GPS Location input + refresh button */}
+          {/* Hall / Booth / Stall input */}
           <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-ink-900/90 px-3 py-2">
-            <MapPin className="h-4 w-4 shrink-0 text-emerald-400" />
+            <Store className="h-4 w-4 shrink-0 text-fuchsia-300" />
             <input
-              value={location?.label || ''}
-              onChange={(e) => setLocation((prev) => ({ ...(prev || {}), label: e.target.value, capturedAt: prev?.capturedAt || Date.now() }))}
-              placeholder={geoBusy ? 'Getting GPS location…' : 'GPS location / city / venue'}
+              value={booth}
+              onChange={(e) => setBooth(e.target.value)}
+              placeholder="Hall / Stall (e.g. Hall 4, B-18)"
               className="w-full bg-transparent text-xs text-slate-100 outline-none placeholder:text-slate-500"
             />
-            <button
-              type="button"
-              onClick={fetchGps}
-              disabled={geoBusy}
-              title="Capture current GPS coordinates"
-              className="flex shrink-0 items-center gap-1 rounded-lg bg-emerald-500/15 px-2 py-1 text-[11px] font-medium text-emerald-300 transition active:scale-95"
-            >
-              {geoBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LocateFixed className="h-3.5 w-3.5" />}
-              GPS
-            </button>
           </div>
+        </div>
+
+        {/* GPS Location input + refresh button */}
+        <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-ink-900/90 px-3 py-2">
+          <MapPin className="h-4 w-4 shrink-0 text-emerald-400" />
+          <input
+            value={location?.label || ''}
+            onChange={(e) => setLocation((prev) => ({ ...(prev || {}), label: e.target.value, capturedAt: prev?.capturedAt || Date.now() }))}
+            placeholder={geoBusy ? 'Getting GPS location…' : 'GPS location / city / venue'}
+            className="w-full bg-transparent text-xs text-slate-100 outline-none placeholder:text-slate-500"
+          />
+          <button
+            type="button"
+            onClick={fetchGps}
+            disabled={geoBusy}
+            title="Capture current GPS coordinates"
+            className="flex shrink-0 items-center gap-1 rounded-lg bg-emerald-500/15 px-2 py-1 text-[11px] font-medium text-emerald-300 transition active:scale-95"
+          >
+            {geoBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LocateFixed className="h-3.5 w-3.5" />}
+            GPS
+          </button>
         </div>
 
         {/* Quick-pick recent event chips */}
         {recentEvents.length > 0 && (
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5">
-            <span className="shrink-0 text-[10px] text-slate-500">Recent events:</span>
+            <span className="shrink-0 text-[10px] text-slate-500">Recent:</span>
             {recentEvents.slice(0, 5).map((ev) => (
               <button
                 key={ev}
@@ -201,13 +280,52 @@ export default function ScanView({
           </div>
         )}
 
-        {/* Quick meeting note or extra colleague spoken to */}
+        {/* Quick Lead Role selector */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5">
+          <span className="shrink-0 text-[10px] text-slate-500">Role:</span>
+          {ROLES.map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              onClick={() => setContactRole(contactRole === r.id ? null : r.id)}
+              className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] transition ${
+                contactRole === r.id ? 'bg-fuchsia-500 text-white' : 'bg-white/5 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+
+        {/* 1-Tap Expo Action Chips (Send Catalog, Price List, Demo, etc.) */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5">
+          <span className="shrink-0 flex items-center gap-1 text-[10px] text-slate-500">
+            <CheckSquare className="h-3 w-3 text-emerald-400" /> To-Do:
+          </span>
+          {QUICK_ACTIONS.map((act) => {
+            const active = actionItems.includes(act);
+            return (
+              <button
+                key={act}
+                type="button"
+                onClick={() => toggleAction(act)}
+                className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] transition ${
+                  active ? 'bg-emerald-500/25 text-emerald-200 border border-emerald-400/40' : 'bg-white/5 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {active ? `✓ ${act}` : `+ ${act}`}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Quick meeting note */}
         <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-ink-900/90 px-3 py-2">
           <StickyNote className="h-4 w-4 shrink-0 text-amber-300" />
           <input
             value={quickNote}
             onChange={(e) => setQuickNote(e.target.value)}
-            placeholder="Quick note (e.g. 'Met with Rahul at booth 4B, interested in Q3 pilot')…"
+            placeholder="Quick note (e.g. 'Met with Amit at Stall B-18, needs 500 units quote')…"
             className="w-full bg-transparent text-xs text-slate-100 outline-none placeholder:text-slate-500"
           />
         </div>
@@ -258,7 +376,7 @@ export default function ScanView({
                 ) : (
                   <div className="flex h-full flex-col items-center justify-center gap-1 text-xs text-slate-500">
                     <ScanLine className="h-6 w-6" />
-                    {s === 'front' ? 'Front' : 'Back (optional)'}
+                    {s === 'front' ? 'Front / QR Badge' : 'Back (optional)'}
                   </div>
                 )}
               </div>
@@ -266,38 +384,75 @@ export default function ScanView({
           })}
         </div>
 
-        <div className="mt-4 grid grid-cols-3 gap-2">
+        {/* Decoded QR Badge Banner if detected */}
+        {decodedQrCard && (
+          <div className="mt-3 flex items-center justify-between rounded-xl border border-emerald-400/30 bg-emerald-500/15 px-3 py-2 text-xs text-emerald-100">
+            <div>
+              <span className="font-semibold">✓ QR Badge / vCard Decoded: </span>
+              {[decodedQrCard.fullName, decodedQrCard.company, decodedQrCard.emails[0]].filter(Boolean).join(' · ')}
+            </div>
+            <button onClick={() => setDecodedQrCard(null)} className="text-emerald-300 hover:text-white">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+
+        <div className="mt-4 grid grid-cols-4 gap-2">
           <button onClick={() => pick(side, 'photo')} disabled={!!(front && back)} className="flex flex-col items-center gap-1.5 rounded-xl bg-indigo-500 px-2 py-3 text-xs font-medium shadow-lg shadow-indigo-500/20 transition active:scale-95 disabled:opacity-40">
-            <Camera className="h-5 w-5" /> Take photo
+            <Camera className="h-5 w-5" /> Photo
           </button>
           <button onClick={() => setCamera(side)} disabled={!!(front && back)} className="flex flex-col items-center gap-1.5 rounded-xl bg-white/5 px-2 py-3 text-xs font-medium transition active:scale-95 disabled:opacity-40">
-            <Video className="h-5 w-5" /> Live camera
+            <Video className="h-5 w-5" /> Camera
           </button>
           <button onClick={() => pick(side, 'upload')} disabled={!!(front && back)} className="flex flex-col items-center gap-1.5 rounded-xl bg-white/5 px-2 py-3 text-xs font-medium transition active:scale-95 disabled:opacity-40">
             <ImagePlus className="h-5 w-5" /> Upload
           </button>
+          <button onClick={() => setShowQrInput(!showQrInput)} className="flex flex-col items-center gap-1.5 rounded-xl bg-white/5 px-2 py-3 text-xs font-medium text-indigo-200 transition active:scale-95">
+            <QrCode className="h-5 w-5" /> QR / Badge
+          </button>
         </div>
+
+        {showQrInput && (
+          <div className="mt-3 space-y-2 rounded-2xl border border-indigo-400/30 bg-ink-900/90 p-3">
+            <div className="text-xs font-medium text-indigo-200">Paste QR Badge / vCard / LinkedIn URL</div>
+            <textarea
+              rows={3}
+              value={qrTextInput}
+              onChange={(e) => setQrTextInput(e.target.value)}
+              placeholder="Paste scanned QR text (BEGIN:VCARD..., MECARD:..., LinkedIn URL, or Name | Role | Company | Email | Phone)"
+              className="w-full rounded-xl border border-white/10 bg-ink-800 p-2.5 text-xs outline-none focus:border-indigo-400"
+            />
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setShowQrInput(false)} className="rounded-lg bg-white/5 px-3 py-1.5 text-xs text-slate-300">
+                Cancel
+              </button>
+              <button type="button" onClick={handleManualQrParse} className="rounded-lg bg-indigo-500 px-3 py-1.5 text-xs font-semibold text-white">
+                Decode & Use
+              </button>
+            </div>
+          </div>
+        )}
 
         <button
           onClick={submit}
-          disabled={!front || busy}
+          disabled={(!front && !decodedQrCard) || busy}
           className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-fuchsia-500 py-3.5 font-semibold shadow-lg shadow-fuchsia-500/20 transition active:scale-[0.98] disabled:from-slate-700 disabled:to-slate-700 disabled:shadow-none"
         >
-          {eventMode ? <><Layers className="h-5 w-5" /> Add to queue</> : <><Sparkles className="h-5 w-5" /> Scan & Enrich</>}
+          {eventMode ? <><Layers className="h-5 w-5" /> Add to queue</> : <><Sparkles className="h-5 w-5" /> Scan & Enrich 360°</>}
         </button>
 
         <input ref={photoInput} type="file" accept="image/*" capture="environment" hidden onChange={onFile} />
         <input ref={uploadInput} type="file" accept="image/*" hidden onChange={onFile} />
       </div>
 
-      {/* Samples */}
+      {/* Samples (including Indian GSTIN + CIN card) */}
       <div>
-        <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">No card handy? Try a sample</div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">No card handy? Try a sample (including Indian MCA/GST card)</div>
+        <div className="grid grid-cols-3 gap-2.5">
           {SAMPLES.map((s) => (
             <button key={s.src} onClick={() => accept(s.src, 'front').then(() => setBack(null))} className="overflow-hidden rounded-xl border border-white/10 bg-white/5 text-left transition active:scale-95">
               <img src={s.src} alt={s.label} className="aspect-[1.75] w-full object-contain bg-white/90" />
-              <div className="px-2.5 py-1.5 text-xs text-slate-400">{s.label}</div>
+              <div className="truncate px-2 py-1.5 text-[11px] font-medium text-slate-300">{s.label}</div>
             </button>
           ))}
         </div>
@@ -306,10 +461,10 @@ export default function ScanView({
       {/* What you get */}
       <div className="grid grid-cols-2 gap-2 text-xs text-slate-400">
         {[
-          [Building2, 'GLEIF, Wikidata, SEC & D&B registry data'],
-          [Globe, 'Website crawl + Google Search research'],
-          [Users, 'Add colleagues met, voice notes & GPS history'],
-          [Target, '1-tap follow-up emails, WhatsApp & CRM sync'],
+          [Building2, 'India MCA CIN, GSTIN, GLEIF, Wikidata, SEC & D&B'],
+          [Globe, 'Website crawl + Google Search + IndiaMART / Tofler'],
+          [Users, 'Add colleagues met, booth tag, voice notes & GPS'],
+          [Target, '1-tap WhatsApp, Hinglish/B2B follow-up & Event ROI'],
         ].map(([Icon, text], i) => {
           const I = Icon as typeof Building2;
           return (

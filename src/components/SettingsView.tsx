@@ -59,7 +59,7 @@ export default function SettingsView({ settings, health, onSave, onClearHistory 
               <Status label={`Search: ${health.search}`} ok />
             </div>
             <div className="text-[11px] text-slate-400">
-              <div><b className="text-slate-300">Registries:</b> {health.registries.join(', ')}</div>
+              <div><b className="text-slate-300">Registries:</b> India MCA/GST, {health.registries.join(', ')}</div>
               <div><b className="text-slate-300">Data providers:</b> {health.providers.join(', ') || 'none'}</div>
               <div><b className="text-slate-300">CRM:</b> {health.crm.join(', ') || 'none'}</div>
             </div>
@@ -69,11 +69,16 @@ export default function SettingsView({ settings, health, onSave, onClearHistory 
         )}
       </Section>
 
-      <Section title="My profile & scan defaults" icon={<UserCheck className="h-4 w-4 text-indigo-300" />}>
+      <Section title="My Digital Business Card & Event Defaults" icon={<UserCheck className="h-4 w-4 text-indigo-300" />}>
         <div className="space-y-3">
-          {input('Your name (for 1-tap follow-up emails & WhatsApp)', 'senderName', 'Alex Rivera', undefined, false)}
-          {input('Your company / title (optional sign-off)', 'senderCompany', 'VP Partnerships, Acme Corp', undefined, false)}
-          {input('Active event / conference tag', 'defaultEvent', 'e.g. Web Summit 2026', 'Automatically tagged on new scans until changed.', false)}
+          {input('Your name (for My QR Card & 1-tap WhatsApp/Email sign-off)', 'senderName', 'Anshul Hukku', undefined, false)}
+          {input('Your role & company', 'senderCompany', 'Director, Acme India Pvt. Ltd.', undefined, false)}
+          {input('Your mobile / WhatsApp number (+91…)', 'senderPhone', '+91 98200 00000', undefined, false)}
+          {input('Your work email', 'senderEmail', 'you@company.in', undefined, false)}
+          {input('Your company website', 'senderWebsite', 'https://www.company.in', undefined, false)}
+          {input('Your LinkedIn URL', 'senderLinkedin', 'https://www.linkedin.com/in/yourprofile', undefined, false)}
+          {input('Your company GSTIN (optional, shown on My QR Card)', 'senderGstin', '27AABCU9603R1ZM', undefined, false)}
+          {input('Active event / conference tag', 'defaultEvent', 'e.g. Bharat Mobility Expo 2026', 'Automatically tagged on new scans until changed.', false)}
           <Toggle
             label="Auto-capture GPS location on scan"
             desc="Tag each scanned business card with your GPS coordinates and city/venue name."
@@ -99,7 +104,7 @@ export default function SettingsView({ settings, health, onSave, onClearHistory 
       </Section>
 
       <Section title="Company registries" icon={<Landmark className="h-4 w-4 text-indigo-300" />}>
-        <p className="mb-3 text-[11px] text-slate-500">GLEIF (legal entities + parent companies), Wikidata and SEC EDGAR are free and always on.</p>
+        <p className="mb-3 text-[11px] text-slate-500">India MCA CIN/GSTIN decoder, GLEIF (legal entities + parent companies), Wikidata and SEC EDGAR are free and always on.</p>
         <div className="space-y-3">
           {input('UK Companies House API key', 'companiesHouseKey', '', <>Free. {link('https://developer.company-information.service.gov.uk/', 'Register here')}</>)}
           {input('OpenCorporates API token', 'openCorporatesToken', '', <>140+ jurisdictions. {link('https://opencorporates.com/api_accounts/new', 'Get a token')}</>)}
@@ -135,7 +140,7 @@ export default function SettingsView({ settings, health, onSave, onClearHistory 
       </Section>
 
       <p className="text-center text-[11px] text-slate-600">
-        CardIntel uses public and licensed data sources only. Respect privacy laws (GDPR/CCPA) and provider terms when storing or using contact data.
+        CardIntel uses public and licensed data sources only. Respect privacy laws (DPDP Act India / GDPR / CCPA) and provider terms when storing or using contact data.
       </p>
     </div>
   );

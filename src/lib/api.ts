@@ -2,7 +2,19 @@ import type { Card, CrmResult, Health, ScanEvent, ScanRecord, Settings } from '.
 
 /** Settings are sent as a single base64 JSON header; empty values are omitted so server .env applies. */
 function headers(settings: Settings): Record<string, string> {
-  const { eventMode, defaultEvent, autoGeo, senderName, senderCompany, ...rest } = settings;
+  const {
+    eventMode,
+    defaultEvent,
+    autoGeo,
+    senderName,
+    senderCompany,
+    senderPhone,
+    senderEmail,
+    senderWebsite,
+    senderLinkedin,
+    senderGstin,
+    ...rest
+  } = settings;
   const cfg: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(rest)) {
     if (typeof v === 'boolean' || (typeof v === 'string' && v.trim())) cfg[k] = v;

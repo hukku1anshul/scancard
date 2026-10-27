@@ -3,9 +3,9 @@ import {
   ArrowLeft, Building2, Copy, Download, ExternalLink, Globe, Mail, MapPin, MessageSquare, Newspaper, Package, Pencil, Phone,
   ShieldCheck, Sparkles, Target, Trash2, TrendingUp, UserPlus, Users, Link2, Briefcase, AlertTriangle, Check, FileDown,
   RefreshCw, Send, Network, BadgeCheck, Loader2, X, History as HistoryIcon, Database, Calendar, Plus, StickyNote,
-  LocateFixed, Flame, Mic, MicOff, Bell, Share2,
+  LocateFixed, Flame, Mic, MicOff, Bell, Share2, Store, CheckSquare, IndianRupee,
 } from 'lucide-react';
-import type { AssociatedContact, CrmResult, DossierTab, IdentityLevel, LeadPriority, ScanRecord, Settings, Validation } from '../types';
+import type { AssociatedContact, ContactRole, CrmResult, DossierTab, IdentityLevel, LeadPriority, ScanRecord, Settings, Validation } from '../types';
 import { Chips, ExtLink, Fact, Section, hostOf, initials } from './ui';
 import {
   associateToVCard,
@@ -13,6 +13,7 @@ import {
   downloadFile,
   generateOutreachDrafts,
   googleCalendarUrl,
+  type OutreachTone,
   shareOrDownloadVCard,
   toMarkdown,
 } from '../lib/export';
@@ -36,6 +37,26 @@ const PRIORITIES: { id: LeadPriority; label: string; cls: string }[] = [
   { id: 'cold', label: 'Cold', cls: 'bg-sky-500/20 text-sky-300 border-sky-400/30' },
   { id: 'partner', label: 'Partner', cls: 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30' },
 ];
+
+const CONTACT_ROLES: { id: ContactRole; label: string }[] = [
+  { id: 'buyer', label: 'Buyer / Client' },
+  { id: 'distributor', label: 'Distributor / Dealer' },
+  { id: 'partner', label: 'Channel Partner' },
+  { id: 'vendor', label: 'Vendor / Supplier' },
+  { id: 'investor', label: 'Investor' },
+  { id: 'speaker', label: 'Speaker / Media' },
+];
+
+const ACTION_PRESETS = [
+  'Send Catalog / Brochure',
+  'Send Price List / Quote',
+  'Book Demo',
+  'Share Sample',
+  'WhatsApp Intro',
+  'Factory / Office Visit',
+];
+
+const DEAL_PRESETS = ['₹5 Lakh', '₹15 Lakh', '₹50 Lakh', '₹1 Cr+', '$10K', '$50K+'];
 
 interface Props {
   record: ScanRecord;
@@ -103,7 +124,7 @@ export default function DossierView({
 
   // Quick-add phone / email state
   const [newPhone, setNewPhone] = useState('');
-  const [newPhoneType, setNewPhoneType] = useState('mobile');
+  const [newPhoneType, setNewPhoneType] = useState('whatsapp');
   const [newEmail, setNewEmail] = useState('');
 
   // Add colleague / associated contact state
@@ -123,8 +144,17 @@ export default function DossierView({
   const [tagInput, setTagInput] = useState('');
 
   // Outreach generator state
-  const [outreachChannel, setOutreachChannel] = useState<'email' | 'linkedin' | 'whatsapp'>('email');
-  const drafts = generateOutreachDrafts(record, settings);
+  const isIndiaCard = Boolean(
+    record.dossier?.validation?.country === 'IN' ||
+      record.card.gstin ||
+      record.card.cin ||
+      record.dossier?.company.gstin ||
+      record.dossier?.company.cin ||
+      record.card.phones.some((p) => p.number.startsWith('+91')),
+  );
+  const [outreachChannel, setOutreachChannel] = useState<'whatsapp' | 'email' | 'linkedin'>(isIndiaCard ? 'whatsapp' : 'email');
+  const [outreachTone, setOutreachTone] = useState<OutreachTone>(isIndiaCard ? 'india_b2b' : 'professional');
+  const drafts = generateOutreachDrafts(record, settings, outreachTone);
   const [customDraft, setCustomDraft] = useState<string | null>(null);
 
   useEffect(() => {
@@ -133,7 +163,7 @@ export default function DossierView({
 
   useEffect(() => {
     setCustomDraft(null);
-  }, [outreachChannel, record.id, record.event, record.location?.label, record.meetingNotes?.length, record.associatedContacts?.length]);
+  }, [outreachChannel, outreachTone, record.id, record.event, record.booth, record.location?.label, record.actionItems?.length, record.meetingNotes?.length, record.associatedContacts?.length]);
 
   const { card, dossier: d } = record;
   const v: Validation | null | undefined = d?.validation;
@@ -147,6 +177,15 @@ export default function DossierView({
   const companyName = d?.company.name || card.company || card.domain || 'Unknown company';
   const emailV = (e: string) => v?.emails.find((x) => x.value === e);
   const phoneV = (p: string) => v?.phones.find((x) => x.value === p);
+
+  // Determine best WhatsApp phone number
+  const waPhoneObj = card.phones.find((p) => p.type === 'whatsapp' || p.type === 'mobile') || card.phones[0];
+  const waDigits = waPhoneObj
+    ? (phoneV(waPhoneObj.number)?.e164 || waPhoneObj.number).replace(/[^\d]/g, '')
+    : '';
+  const waQuickHref = waDigits
+    ? `https://wa.me/${waDigits}?text=${encodeURIComponent(generateOutreachDrafts(record, settings, outreachTone).whatsappText)}`
+    : undefined;
 
   // Handlers for adding details directly to card
   const handleAddPhone = () => {
@@ -189,6 +228,12 @@ export default function DossierView({
     onUpdateRecord({
       card: { ...card, emails: card.emails.filter((e) => e !== em) },
     });
+  };
+
+  const toggleActionItem = (item: string) => {
+    const cur = record.actionItems || [];
+    const next = cur.includes(item) ? cur.filter((x) => x !== item) : [...cur, item];
+    onUpdateRecord({ actionItems: next });
   };
 
   // Handlers for Associated Contacts (colleagues met in the company)
@@ -254,7 +299,7 @@ export default function DossierView({
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rec = new (SpeechRec as any)();
-    rec.lang = 'en-US';
+    rec.lang = isIndiaCard ? 'en-IN' : 'en-US';
     rec.interimResults = false;
     rec.maxAlternatives = 1;
     setListening(true);
@@ -292,8 +337,10 @@ export default function DossierView({
     onUpdateRecord({ tags: (record.tags || []).filter((x) => x !== t) });
   };
 
-  const assocCount = (record.associatedContacts?.length || 0) + (record.meetingNotes?.length || 0);
+  const assocCount = (record.associatedContacts?.length || 0) + (record.meetingNotes?.length || 0) + (record.actionItems?.length || 0);
   const locHref = mapsUrl(record.location);
+  const gstin = card.gstin || d?.company.gstin;
+  const cin = card.cin || d?.company.cin;
   const currentDraftText =
     customDraft !== null
       ? customDraft
@@ -318,7 +365,7 @@ export default function DossierView({
 
         {record.demo && (
           <div className="mb-3 rounded-xl border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-            Demo data (fictional). Add a Gemini key in Settings for live results.
+            Demo data (fictional Indian MCA/GST dossier). Add a Gemini key in Settings for live results.
           </div>
         )}
 
@@ -338,21 +385,21 @@ export default function DossierView({
             {d?.company.logo && <img src={d.company.logo} alt="" className="h-10 w-10 shrink-0 rounded-lg bg-white object-contain p-1" />}
           </div>
 
-          {/* Event, GPS Location & Priority Context Pills */}
+          {/* Event, Booth, GPS Location & Statutory Context Pills */}
           <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs">
             {record.event ? (
               <button
                 onClick={() => setTab('notes')}
                 className="inline-flex items-center gap-1 rounded-full border border-indigo-400/30 bg-indigo-500/20 px-2.5 py-1 text-indigo-200"
               >
-                <Calendar className="h-3 w-3" /> {record.event}
+                <Calendar className="h-3 w-3" /> {record.event}{record.booth ? ` · ${record.booth}` : ''}
               </button>
             ) : (
               <button
                 onClick={() => setTab('notes')}
                 className="inline-flex items-center gap-1 rounded-full border border-dashed border-white/15 bg-white/5 px-2.5 py-1 text-slate-400 hover:text-slate-200"
               >
-                <Calendar className="h-3 w-3" /> + Add Event
+                <Calendar className="h-3 w-3" /> + Add Event / Stall
               </button>
             )}
 
@@ -376,11 +423,17 @@ export default function DossierView({
               </button>
             )}
 
+            {gstin && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/30 bg-amber-500/15 px-2.5 py-1 font-mono text-[11px] text-amber-200">
+                GST: {gstin}
+              </span>
+            )}
+
             <button
               onClick={() => setTab('notes')}
               className="inline-flex items-center gap-1 rounded-full border border-fuchsia-400/30 bg-fuchsia-500/15 px-2.5 py-1 text-fuchsia-200"
             >
-              <UserPlus className="h-3 w-3" /> + Add Colleague / Phone / Note
+              <UserPlus className="h-3 w-3" /> + Colleague / Phone / Note
             </button>
           </div>
 
@@ -403,6 +456,11 @@ export default function DossierView({
                 </button>
               );
             })}
+            {record.dealValue && (
+              <span className="ml-auto rounded-full border border-emerald-400/30 bg-emerald-500/20 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-200">
+                Deal: {record.dealValue}
+              </span>
+            )}
           </div>
 
           {d?.company.industry && (
@@ -411,8 +469,10 @@ export default function DossierView({
             </div>
           )}
 
-          <div className="mt-4 grid grid-cols-4 gap-2">
-            <ActionBtn icon={<UserPlus className="h-5 w-5" />} label="Save vCard" onClick={() => shareOrDownloadVCard(card, d, record)} primary />
+          {/* 5-Button Action Bar with 1-Tap WhatsApp */}
+          <div className="mt-4 grid grid-cols-5 gap-1.5">
+            <ActionBtn icon={<UserPlus className="h-5 w-5" />} label="Save" onClick={() => shareOrDownloadVCard(card, d, record)} primary />
+            <ActionBtn icon={<MessageSquare className="h-5 w-5 text-emerald-300" />} label="WhatsApp" href={waQuickHref} />
             <ActionBtn icon={<Phone className="h-5 w-5" />} label="Call" href={card.phones[0] ? `tel:${(phoneV(card.phones[0].number)?.e164 || card.phones[0].number).replace(/[^\d+]/g, '')}` : undefined} />
             <ActionBtn icon={<Mail className="h-5 w-5" />} label="Email" href={card.emails[0] ? `mailto:${card.emails[0]}` : undefined} />
             <ActionBtn icon={<Send className="h-5 w-5" />} label="CRM" onClick={() => setCrmOpen(true)} />
@@ -450,7 +510,86 @@ export default function DossierView({
         {/* ============================================================ NOTES & TEAM TAB */}
         {tab === 'notes' && (
           <>
-            {/* 1. Other People Met at Company */}
+            {/* 1. Event Lead Qualification: Action Checklist, Role & Deal Value */}
+            <Section title="Event Lead Qualification & Action Checklist" icon={<CheckSquare className="h-4 w-4 text-emerald-300" />}>
+              <div className="space-y-3 text-xs">
+                <div>
+                  <div className="mb-1.5 text-slate-400">Promised Follow-Up Actions (tap to toggle)</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {ACTION_PRESETS.map((act) => {
+                      const active = (record.actionItems || []).includes(act);
+                      return (
+                        <button
+                          key={act}
+                          type="button"
+                          onClick={() => toggleActionItem(act)}
+                          className={`rounded-full border px-2.5 py-1 text-xs transition ${
+                            active
+                              ? 'border-emerald-400/40 bg-emerald-500/20 font-medium text-emerald-200'
+                              : 'border-white/10 bg-white/5 text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          {active ? `✓ ${act}` : `+ ${act}`}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-1.5 text-slate-400">Contact Role / Relationship Type</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {CONTACT_ROLES.map((r) => {
+                      const active = record.contactRole === r.id;
+                      return (
+                        <button
+                          key={r.id}
+                          type="button"
+                          onClick={() => onUpdateRecord({ contactRole: active ? null : r.id })}
+                          className={`rounded-full border px-2.5 py-1 text-xs transition ${
+                            active
+                              ? 'border-fuchsia-400/40 bg-fuchsia-500/20 font-medium text-fuchsia-200'
+                              : 'border-white/10 bg-white/5 text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          {r.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-1 flex items-center gap-1 text-slate-400">
+                    <IndianRupee className="h-3.5 w-3.5 text-emerald-400" /> Estimated Deal / Order Potential
+                  </label>
+                  <div className="flex gap-1.5">
+                    <input
+                      value={record.dealValue || ''}
+                      onChange={(e) => onUpdateRecord({ dealValue: e.target.value || null })}
+                      placeholder="e.g. ₹25 Lakh, ₹1.5 Cr, 500 units, $40K"
+                      className="min-w-0 flex-1 rounded-xl border border-white/10 bg-ink-900 px-3 py-2 text-xs outline-none focus:border-indigo-400"
+                    />
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {DEAL_PRESETS.map((dp) => (
+                      <button
+                        key={dp}
+                        type="button"
+                        onClick={() => onUpdateRecord({ dealValue: record.dealValue === dp ? null : dp })}
+                        className={`rounded-full px-2.5 py-0.5 text-[11px] ${
+                          record.dealValue === dp ? 'bg-emerald-500 text-white' : 'bg-white/5 text-slate-400'
+                        }`}
+                      >
+                        {dp}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </Section>
+
+            {/* 2. Other People Met at Company */}
             <Section
               title={`People Spoken To at ${companyName} (${(record.associatedContacts || []).length})`}
               icon={<Users className="h-4 w-4 text-indigo-300" />}
@@ -481,13 +620,13 @@ export default function DossierView({
                     <input
                       value={colRole}
                       onChange={(e) => setColRole(e.target.value)}
-                      placeholder="Job title / Role (e.g. VP Sales)"
+                      placeholder="Job title / Role (e.g. GM Purchase)"
                       className="rounded-xl border border-white/10 bg-ink-800 px-3 py-2 text-sm outline-none focus:border-indigo-400"
                     />
                     <input
                       value={colPhone}
                       onChange={(e) => setColPhone(e.target.value)}
-                      placeholder="Phone / WhatsApp number"
+                      placeholder="Phone / WhatsApp number (+91...)"
                       className="rounded-xl border border-white/10 bg-ink-800 px-3 py-2 text-sm outline-none focus:border-indigo-400"
                     />
                     <input
@@ -549,6 +688,17 @@ export default function DossierView({
                           )}
                         </div>
                         <div className="flex items-center gap-1">
+                          {c.phone && (
+                            <a
+                              href={`https://wa.me/${c.phone.replace(/[^\d]/g, '')}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="rounded-lg bg-emerald-500/15 p-1.5 text-emerald-300 hover:bg-emerald-500/25"
+                              title="WhatsApp"
+                            >
+                              <MessageSquare className="h-3.5 w-3.5" />
+                            </a>
+                          )}
                           {c.phone && (
                             <a
                               href={`tel:${c.phone.replace(/[^\d+]/g, '')}`}
@@ -638,8 +788,8 @@ export default function DossierView({
               )}
             </Section>
 
-            {/* 2. Quick Add Phone Number or Email to This Card */}
-            <Section title={`Add Extra Phone / Email for ${card.fullName || 'This Contact'}`} icon={<Phone className="h-4 w-4 text-indigo-300" />}>
+            {/* 3. Quick Add Phone Number, Email, GSTIN or CIN to This Card */}
+            <Section title={`Add Extra Phone / Email / GSTIN for ${card.fullName || 'This Contact'}`} icon={<Phone className="h-4 w-4 text-indigo-300" />}>
               <div className="space-y-3">
                 {/* Existing phones & emails with delete button */}
                 <div className="space-y-1.5 text-xs">
@@ -670,15 +820,15 @@ export default function DossierView({
                     onChange={(e) => setNewPhoneType(e.target.value)}
                     className="rounded-xl border border-white/10 bg-ink-900 px-2.5 py-2 text-xs text-slate-300 outline-none"
                   >
+                    <option value="whatsapp">WhatsApp</option>
                     <option value="mobile">Mobile</option>
-                    <option value="work">Work</option>
-                    <option value="other">Direct / WhatsApp</option>
+                    <option value="work">Work / Landline</option>
                   </select>
                   <input
                     value={newPhone}
                     onChange={(e) => setNewPhone(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleAddPhone()}
-                    placeholder="Add another phone number…"
+                    placeholder="Add phone / WhatsApp (+91…)"
                     className="min-w-0 flex-1 rounded-xl border border-white/10 bg-ink-900 px-3 py-2 text-xs outline-none focus:border-indigo-400"
                   />
                   <button
@@ -708,10 +858,32 @@ export default function DossierView({
                     + Email
                   </button>
                 </div>
+
+                {/* GSTIN & CIN inline fields */}
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 pt-1">
+                  <div>
+                    <label className="mb-1 block text-[11px] text-slate-400">Company GSTIN (India)</label>
+                    <input
+                      value={card.gstin || ''}
+                      onChange={(e) => onUpdateRecord({ card: { ...card, gstin: e.target.value.toUpperCase() || null } })}
+                      placeholder="e.g. 27AABCU9603R1ZM"
+                      className="w-full rounded-xl border border-white/10 bg-ink-900 px-3 py-2 font-mono text-xs outline-none focus:border-indigo-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] text-slate-400">MCA CIN / LLPIN (India)</label>
+                    <input
+                      value={card.cin || ''}
+                      onChange={(e) => onUpdateRecord({ card: { ...card, cin: e.target.value.toUpperCase() || null } })}
+                      placeholder="e.g. U72200KA2018PTC112345"
+                      className="w-full rounded-xl border border-white/10 bg-ink-900 px-3 py-2 font-mono text-xs outline-none focus:border-indigo-400"
+                    />
+                  </div>
+                </div>
               </div>
             </Section>
 
-            {/* 3. Meeting Notes + Voice Dictation */}
+            {/* 4. Meeting Notes + Voice Dictation */}
             <Section title={`Meeting Notes (${(record.meetingNotes || []).length})`} icon={<StickyNote className="h-4 w-4 text-amber-300" />}>
               <div className="space-y-2.5">
                 <div className="flex gap-1.5">
@@ -719,14 +891,14 @@ export default function DossierView({
                     rows={2}
                     value={noteInput}
                     onChange={(e) => setNoteInput(e.target.value)}
-                    placeholder="Jot down conversation highlights, requirements, pricing discussed, or next steps…"
+                    placeholder="Jot down conversation highlights, MOQ, pricing discussed, or next steps…"
                     className="min-w-0 flex-1 rounded-xl border border-white/10 bg-ink-900 px-3 py-2 text-sm outline-none focus:border-indigo-400"
                   />
                   <div className="flex flex-col gap-1.5">
                     <button
                       type="button"
                       onClick={toggleDictation}
-                      title="Voice-to-text dictation"
+                      title="Voice-to-text dictation (supports Indian English)"
                       className={`flex items-center justify-center rounded-xl p-2.5 transition ${
                         listening ? 'animate-pulse bg-rose-500 text-white' : 'bg-white/5 text-slate-300 hover:bg-white/10'
                       }`}
@@ -766,34 +938,47 @@ export default function DossierView({
               </div>
             </Section>
 
-            {/* 4. Event, GPS Location, Tags & Follow-Up Reminder */}
-            <Section title="Event, GPS Location & Follow-Up Reminder" icon={<Calendar className="h-4 w-4 text-emerald-300" />}>
+            {/* 5. Event, Booth/Stall, GPS Location, Tags & Follow-Up Reminder */}
+            <Section title="Event, Stall/Booth, GPS & Follow-Up Reminder" icon={<Calendar className="h-4 w-4 text-emerald-300" />}>
               <div className="space-y-3 text-xs">
-                <div>
-                  <label className="mb-1 block text-slate-400">Event / Trade Show / Conference</label>
-                  <input
-                    value={record.event || ''}
-                    onChange={(e) => onUpdateRecord({ event: e.target.value || null })}
-                    placeholder="e.g. SaaStr Annual 2026, Client Dinner, Booth #412"
-                    className="w-full rounded-xl border border-white/10 bg-ink-900 px-3 py-2 text-sm outline-none focus:border-indigo-400"
-                  />
-                  {recentEvents.length > 0 && (
-                    <div className="mt-1.5 flex flex-wrap gap-1">
-                      {recentEvents.slice(0, 5).map((ev) => (
-                        <button
-                          key={ev}
-                          type="button"
-                          onClick={() => onUpdateRecord({ event: ev })}
-                          className={`rounded-full px-2 py-0.5 text-[11px] ${
-                            record.event === ev ? 'bg-indigo-500 text-white' : 'bg-white/5 text-slate-400'
-                          }`}
-                        >
-                          {ev}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <div className="sm:col-span-2">
+                    <label className="mb-1 block text-slate-400">Event / Trade Show / Conference</label>
+                    <input
+                      value={record.event || ''}
+                      onChange={(e) => onUpdateRecord({ event: e.target.value || null })}
+                      placeholder="e.g. Bharat Mobility Expo, Elecrama, SaaSBoomi"
+                      className="w-full rounded-xl border border-white/10 bg-ink-900 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 flex items-center gap-1 text-slate-400">
+                      <Store className="h-3 w-3 text-fuchsia-300" /> Hall / Stall No.
+                    </label>
+                    <input
+                      value={record.booth || ''}
+                      onChange={(e) => onUpdateRecord({ booth: e.target.value || null })}
+                      placeholder="e.g. Hall 4, B-18"
+                      className="w-full rounded-xl border border-white/10 bg-ink-900 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+                    />
+                  </div>
                 </div>
+                {recentEvents.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {recentEvents.slice(0, 5).map((ev) => (
+                      <button
+                        key={ev}
+                        type="button"
+                        onClick={() => onUpdateRecord({ event: ev })}
+                        className={`rounded-full px-2 py-0.5 text-[11px] ${
+                          record.event === ev ? 'bg-indigo-500 text-white' : 'bg-white/5 text-slate-400'
+                        }`}
+                      >
+                        {ev}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 <div>
                   <label className="mb-1 block text-slate-400">Scan Location (GPS)</label>
@@ -829,11 +1014,6 @@ export default function DossierView({
                       </a>
                     )}
                   </div>
-                  {record.location?.lat && record.location?.lng && (
-                    <div className="mt-1 text-[10px] text-slate-500">
-                      GPS coordinates: {record.location.lat}, {record.location.lng}
-                    </div>
-                  )}
                 </div>
 
                 {/* Follow-Up Reminder Date + Calendar Export */}
@@ -874,7 +1054,7 @@ export default function DossierView({
                       value={tagInput}
                       onChange={(e) => setTagInput(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleAddTag()}
-                      placeholder="Add tag (e.g. Q3-Pipeline, Distributor, VIP)…"
+                      placeholder="Add tag (e.g. Q3-Pipeline, OEM, Tier-1, VIP)…"
                       className="min-w-0 flex-1 rounded-xl border border-white/10 bg-ink-900 px-3 py-2 text-xs outline-none focus:border-indigo-400"
                     />
                     <button type="button" onClick={handleAddTag} className="rounded-xl bg-white/10 px-3 py-2 text-xs text-slate-200">
@@ -908,7 +1088,7 @@ export default function DossierView({
               {d.company.tagline && <p className="mb-2 text-sm italic text-indigo-200">“{d.company.tagline}”</p>}
               <p className="text-sm leading-relaxed text-slate-200">{d.company.summary || 'No summary available.'}</p>
             </Section>
-            <Section title="Firmographics" icon={<Building2 className="h-4 w-4 text-indigo-300" />}>
+            <Section title="Firmographics & Statutory IDs" icon={<Building2 className="h-4 w-4 text-indigo-300" />}>
               <div className="grid grid-cols-2 gap-2">
                 <Fact label="Legal name" value={d.company.legalName} />
                 <Fact label="Industry" value={[d.company.industry, d.company.subIndustry].filter(Boolean).join(' · ')} />
@@ -918,16 +1098,44 @@ export default function DossierView({
                 <Fact label="Revenue" value={d.company.revenueRange} />
                 <Fact label="Ownership" value={d.company.ownership} />
                 <Fact label="Parent" value={d.company.parentCompany} />
+                <Fact label="GSTIN (India)" value={gstin} />
+                <Fact label="MCA CIN / LLPIN" value={cin} />
                 <Fact label="D-U-N-S" value={d.company.dunsNumber} />
                 <Fact label="LEI" value={d.company.lei} />
               </div>
               {!!d.company.locations?.length && (
                 <div className="mt-3">
-                  <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">Locations</div>
+                  <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">Locations / Plants</div>
                   <Chips items={d.company.locations} />
                 </div>
               )}
               {d.company.registryInfo && <p className="mt-3 text-sm text-slate-300">{d.company.registryInfo}</p>}
+
+              {/* Quick India B2B Verification Links when Indian company or GSTIN/CIN present */}
+              {isIndiaCard && (
+                <div className="mt-3 flex flex-wrap gap-1.5 border-t border-white/5 pt-3">
+                  <span className="w-full text-[10px] font-semibold uppercase tracking-wide text-amber-300">
+                    🇮🇳 Verify on Indian Portals:
+                  </span>
+                  <ExtLink
+                    href={`https://www.google.com/search?q=${encodeURIComponent(`${companyName} ${cin || ''} site:zaubacorp.com OR site:tofler.in`)}`}
+                    className="rounded-lg bg-white/5 px-2.5 py-1 text-xs"
+                  >
+                    MCA / ZaubaCorp / Tofler
+                  </ExtLink>
+                  {gstin && (
+                    <ExtLink href="https://services.gst.gov.in/services/searchtp" className="rounded-lg bg-white/5 px-2.5 py-1 text-xs">
+                      GST Portal ({gstin.slice(0, 2)})
+                    </ExtLink>
+                  )}
+                  <ExtLink
+                    href={`https://www.indiamart.com/search.mp?ss=${encodeURIComponent(companyName)}`}
+                    className="rounded-lg bg-white/5 px-2.5 py-1 text-xs"
+                  >
+                    IndiaMART Catalog
+                  </ExtLink>
+                </div>
+              )}
             </Section>
 
             {d.familyTree && (
@@ -945,14 +1153,14 @@ export default function DossierView({
                   </div>
                   {d.familyTree.subsidiaries.length > 0 && (
                     <div className="pt-1">
-                      <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">Subsidiaries</div>
+                      <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">Subsidiaries / Group Entities</div>
                       <Chips items={d.familyTree.subsidiaries} />
                     </div>
                   )}
                 </div>
                 <p className="mt-3 text-[11px] text-slate-500">
                   Sources: {d.familyTree.sources.join(', ')}
-                  {d.familyTree.familyTreeMembers ? ` · ${d.familyTree.familyTreeMembers} family members (D&B)` : ''}
+                  {d.familyTree.familyTreeMembers ? ` · ${d.familyTree.familyTreeMembers} family members` : ''}
                 </p>
               </Section>
             )}
@@ -982,7 +1190,7 @@ export default function DossierView({
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-slate-500">No official registry match. Small/private companies often aren't in GLEIF/Wikidata — add a D&B, Companies House or OpenCorporates key in Settings for broader coverage.</p>
+                <p className="text-sm text-slate-500">No official registry match. Small/private companies often aren't in GLEIF/Wikidata — add a GSTIN/CIN or D&B/OpenCorporates key in Settings for broader coverage.</p>
               )}
             </Section>
 
@@ -1020,7 +1228,7 @@ export default function DossierView({
                     <Row key={e} icon={<Mail className="h-4 w-4" />} href={`mailto:${e}`}>
                       {e}
                       {ev && <ValidityDot status={ev.status} />}
-                      {ev?.freeMail && <span className="ml-1.5 text-[10px] text-slate-500">personal email</span>}
+                      {ev?.freeMail && <span className="ml-1.5 text-[10px] text-slate-500">personal / MSME mail</span>}
                     </Row>
                   );
                 })}
@@ -1040,6 +1248,8 @@ export default function DossierView({
                   </Row>
                 )}
                 {card.address && <Row icon={<MapPin className="h-4 w-4" />} href={`https://maps.google.com/?q=${encodeURIComponent(card.address)}`}>{card.address}</Row>}
+                {gstin && <div className="font-mono text-xs text-amber-200">GSTIN: {gstin}</div>}
+                {cin && <div className="font-mono text-xs text-emerald-200">CIN: {cin}</div>}
               </div>
               {card.notes && <p className="mt-3 text-xs text-slate-500">{card.notes}</p>}
             </Section>
@@ -1172,7 +1382,7 @@ export default function DossierView({
         {/* ============================================================ SOCIAL & NEWS TAB */}
         {d && tab === 'social' && (
           <>
-            <Section title="Social presence" icon={<Globe className="h-4 w-4 text-indigo-300" />}>
+            <Section title="Social & B2B directory presence" icon={<Globe className="h-4 w-4 text-indigo-300" />}>
               {d.socialPresence.length ? (
                 <ul className="space-y-2">
                   {d.socialPresence.map((s, i) => (
@@ -1212,20 +1422,41 @@ export default function DossierView({
             {/* 1-Tap Personalized Follow-Up Composer */}
             <Section title="1-Tap Follow-Up & Outreach Generator" icon={<Share2 className="h-4 w-4 text-indigo-300" />}>
               <p className="mb-2.5 text-xs text-slate-400">
-                Auto-crafted using your scan event{record.event ? ` (${record.event})` : ''}, location{record.location?.label ? ` (${record.location.label})` : ''}, colleagues met, notes, and company intelligence.
+                Auto-crafted using your scan event{record.event ? ` (${record.event})` : ''}, stall{record.booth ? ` (${record.booth})` : ''}, action items, colleagues met, notes, and company intelligence.
               </p>
 
-              <div className="mb-3 flex gap-1.5">
+              {/* Channel Selector */}
+              <div className="mb-2 flex gap-1.5">
                 {([
+                  ['whatsapp', 'WhatsApp / SMS'],
                   ['email', 'Email'],
                   ['linkedin', 'LinkedIn Note'],
-                  ['whatsapp', 'WhatsApp / SMS'],
                 ] as const).map(([id, label]) => (
                   <button
                     key={id}
                     onClick={() => setOutreachChannel(id)}
                     className={`rounded-xl px-3 py-1.5 text-xs font-medium transition ${
                       outreachChannel === id ? 'bg-indigo-500 text-white' : 'bg-white/5 text-slate-400'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Style / Tone Switcher (including India Warm B2B & Hinglish) */}
+              <div className="mb-3 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                <span className="text-[11px] text-slate-500">Tone:</span>
+                {([
+                  ['india_b2b', '🇮🇳 India Warm B2B'],
+                  ['hinglish', '🇮🇳 Hinglish (Conversational)'],
+                  ['professional', '🌐 Global Standard'],
+                ] as const).map(([id, label]) => (
+                  <button
+                    key={id}
+                    onClick={() => setOutreachTone(id)}
+                    className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] transition ${
+                      outreachTone === id ? 'bg-emerald-500/25 text-emerald-200 border border-emerald-400/30' : 'bg-white/5 text-slate-400'
                     }`}
                   >
                     {label}
@@ -1241,7 +1472,7 @@ export default function DossierView({
               )}
 
               <textarea
-                rows={outreachChannel === 'email' ? 7 : 4}
+                rows={outreachChannel === 'email' ? 7 : 5}
                 value={currentDraftText}
                 onChange={(e) => setCustomDraft(e.target.value)}
                 className="w-full rounded-xl border border-white/10 bg-ink-900 p-3 text-xs leading-relaxed text-slate-200 outline-none focus:border-indigo-400"
@@ -1256,23 +1487,23 @@ export default function DossierView({
                   {copied === 'outreach' ? 'Copied!' : 'Copy Message'}
                 </button>
 
+                {outreachChannel === 'whatsapp' && (
+                  <a
+                    href={`https://wa.me/${waDigits}?text=${encodeURIComponent(currentDraftText)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 rounded-xl bg-emerald-500/25 px-3.5 py-2 text-xs font-semibold text-emerald-200"
+                  >
+                    <MessageSquare className="h-3.5 w-3.5" /> Send on WhatsApp
+                  </a>
+                )}
+
                 {outreachChannel === 'email' && card.emails[0] && (
                   <a
                     href={`mailto:${card.emails[0]}?subject=${encodeURIComponent(drafts.emailSubject)}&body=${encodeURIComponent(currentDraftText)}`}
                     className="flex items-center gap-1.5 rounded-xl bg-white/10 px-3.5 py-2 text-xs font-medium text-slate-200"
                   >
                     <Mail className="h-3.5 w-3.5" /> Open in Email App
-                  </a>
-                )}
-
-                {outreachChannel === 'whatsapp' && (
-                  <a
-                    href={`https://wa.me/${card.phones[0] ? (phoneV(card.phones[0].number)?.e164 || card.phones[0].number).replace(/[^\d]/g, '') : ''}?text=${encodeURIComponent(currentDraftText)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 rounded-xl bg-emerald-500/20 px-3.5 py-2 text-xs font-medium text-emerald-200"
-                  >
-                    <MessageSquare className="h-3.5 w-3.5" /> Send via WhatsApp
                   </a>
                 )}
               </div>
