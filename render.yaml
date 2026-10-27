@@ -13,7 +13,7 @@ services:
       - key: NODE_VERSION
         value: 22.13.0
       - key: GEMINI_MODEL
-        value: gemini-2.5-flash
+        value: gemini-3-flash-preview
       - key: GROUNDING
         value: "on"
       - key: GEMINI_API_KEY

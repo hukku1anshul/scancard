@@ -1,19 +1,51 @@
 const BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 const RETRYABLE = [429, 500, 502, 503, 504];
 
+// Latest Gemini models ordered by preference; automatically falls back if a model ID is deprecated or unavailable
+export const LATEST_GEMINI_MODELS = [
+  'gemini-3-flash-preview',
+  'gemini-flash-latest',
+  'gemini-3.1-pro-preview',
+  'gemini-2.5-flash',
+];
+
+function buildModelCandidates(requestedModel) {
+  const list = [];
+  if (requestedModel && typeof requestedModel === 'string') {
+    list.push(requestedModel.trim());
+  }
+  for (const m of LATEST_GEMINI_MODELS) {
+    if (!list.includes(m)) list.push(m);
+  }
+  return list;
+}
+
 async function callGemini({ apiKey, model, body }) {
+  const candidates = buildModelCandidates(model);
   let lastErr;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const r = await fetch(`${BASE}/${encodeURIComponent(model)}:generateContent`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-      body: JSON.stringify(body),
-    });
-    const data = await r.json().catch(() => ({}));
-    if (r.ok) return data;
-    lastErr = new Error(`Gemini API ${r.status}: ${data?.error?.message || r.statusText}`);
-    if (!RETRYABLE.includes(r.status)) break;
-    await new Promise((res) => setTimeout(res, 1200 * (attempt + 1)));
+
+  for (const candidateModel of candidates) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const r = await fetch(`${BASE}/${encodeURIComponent(candidateModel)}:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify(body),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (r.ok) return data;
+
+      const msg = data?.error?.message || r.statusText || '';
+      lastErr = new Error(`Gemini API ${r.status} (${candidateModel}): ${msg}`);
+
+      // If model is not found / deprecated / unsupported (404 or 400 model error), immediately try next model in fallback chain
+      if (r.status === 404 || (r.status === 400 && /model|not found|not supported|deprecated/i.test(msg))) {
+        console.warn(`[gemini] Model "${candidateModel}" unavailable (${r.status}: ${msg}), trying next latest model…`);
+        break;
+      }
+
+      if (!RETRYABLE.includes(r.status)) break;
+      await new Promise((res) => setTimeout(res, 1200 * (attempt + 1)));
+    }
   }
   throw lastErr;
 }

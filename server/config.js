@@ -46,7 +46,10 @@ export function resolveConfig(_req) {
   for (const [k, aliases] of Object.entries(ENV_ALIASES)) {
     cfg[k] = readEnv(aliases);
   }
-  cfg.geminiModel ||= 'gemini-2.5-flash';
+  const legacyModels = new Set(['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']);
+  if (!cfg.geminiModel || legacyModels.has(cfg.geminiModel.toLowerCase())) {
+    cfg.geminiModel = 'gemini-3-flash-preview';
+  }
   const groundingEnv = readEnv(['GROUNDING', 'GEMINI_GROUNDING']).toLowerCase();
   cfg.grounding = groundingEnv !== 'off' && groundingEnv !== 'false' && groundingEnv !== '0';
 
