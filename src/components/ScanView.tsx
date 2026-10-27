@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Camera, ImagePlus, ScanLine, Sparkles, X, Video, Building2, Globe, Users, Target, Layers, ChevronRight,
-  MapPin, Calendar, LocateFixed, Loader2, StickyNote, QrCode, Store, CheckSquare,
+  MapPin, Calendar, LocateFixed, Loader2, StickyNote, QrCode, Store, CheckSquare, Crop,
 } from 'lucide-react';
 import CameraCapture from './CameraCapture';
+import PhotoCropModal from './PhotoCropModal';
 import { prepareImage, type PreparedImage } from '../lib/image';
 import { captureGeoLocation } from '../lib/geo';
 import { detectQrFromImageSource, parseQrPayload } from '../lib/qr';
@@ -74,6 +75,9 @@ export default function ScanView({
 }: Props) {
   const [front, setFront] = useState<PreparedImage | null>(null);
   const [back, setBack] = useState<PreparedImage | null>(null);
+  const [rawFront, setRawFront] = useState<Blob | string | null>(null);
+  const [rawBack, setRawBack] = useState<Blob | string | null>(null);
+  const [cropSession, setCropSession] = useState<{ source: Blob | string; side: 'front' | 'back' } | null>(null);
   const [camera, setCamera] = useState<null | 'front' | 'back'>(null);
   const [busy, setBusy] = useState(false);
 
@@ -146,11 +150,19 @@ export default function ScanView({
     }
   };
 
-  const accept = async (blob: Blob | string, side: 'front' | 'back') => {
+  const accept = async (blob: Blob | string, side: 'front' | 'back', rawSource?: Blob | string) => {
     setBusy(true);
     try {
       const img = await prepareImage(blob);
-      side === 'front' ? setFront(img) : setBack(img);
+      if (side === 'front') {
+        setFront(img);
+        if (rawSource !== undefined) setRawFront(rawSource);
+        else if (!rawFront) setRawFront(blob);
+      } else {
+        setBack(img);
+        if (rawSource !== undefined) setRawBack(rawSource);
+        else if (!rawBack) setRawBack(blob);
+      }
       // Also check if image contains a QR badge / vCard QR code
       const qrRaw = await detectQrFromImageSource(blob);
       if (qrRaw) {
@@ -165,7 +177,10 @@ export default function ScanView({
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     e.target.value = '';
-    if (f) await accept(f, target.current);
+    if (f) {
+      // Open interactive Photo Scan Area so user can zoom in/out & frame the business card
+      setCropSession({ source: f, side: target.current });
+    }
   };
 
   const pick = (side: 'front' | 'back', mode: 'photo' | 'upload') => {
@@ -360,13 +375,32 @@ export default function ScanView({
         <div className="grid grid-cols-2 gap-3">
           {(['front', 'back'] as const).map((s) => {
             const img = s === 'front' ? front : back;
+            const raw = s === 'front' ? rawFront : rawBack;
             return (
               <div key={s} className="relative aspect-[1.75] overflow-hidden rounded-xl border border-dashed border-white/15 bg-black/20">
                 {img ? (
                   <>
-                    <img src={img.dataUrl} alt={`${s} of card`} className="h-full w-full object-cover" />
+                    <img src={img.dataUrl} alt={`${s} of card`} className="h-full w-full object-contain bg-ink-950/60" />
                     <button
-                      onClick={() => (s === 'front' ? (setFront(back), setBack(null)) : setBack(null))}
+                      type="button"
+                      onClick={() => setCropSession({ source: raw || img.dataUrl, side: s })}
+                      className="absolute bottom-1.5 left-1.5 flex items-center gap-1 rounded-full bg-indigo-500/90 px-2.5 py-1 text-[10px] font-semibold text-white shadow backdrop-blur hover:bg-indigo-500"
+                      title="Zoom in/out & adjust scan frame"
+                    >
+                      <Crop className="h-3 w-3" /> Zoom / Frame
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (s === 'front') {
+                          setFront(back);
+                          setRawFront(rawBack);
+                          setBack(null);
+                          setRawBack(null);
+                        } else {
+                          setBack(null);
+                          setRawBack(null);
+                        }
+                      }}
                       className="absolute right-1.5 top-1.5 rounded-full bg-black/60 p-1"
                       aria-label={`Remove ${s}`}
                     >
@@ -482,7 +516,20 @@ export default function ScanView({
           onCapture={async (blob) => {
             const s = camera;
             setCamera(null);
-            await accept(blob, s);
+            await accept(blob, s, blob);
+          }}
+        />
+      )}
+
+      {cropSession && (
+        <PhotoCropModal
+          source={cropSession.source}
+          sideLabel={cropSession.side === 'front' ? 'Front Side' : 'Back Side'}
+          onCancel={() => setCropSession(null)}
+          onConfirm={async (croppedBlob) => {
+            const { source, side: cropSide } = cropSession;
+            setCropSession(null);
+            await accept(croppedBlob, cropSide, source);
           }}
         />
       )}
