@@ -17,6 +17,12 @@ function ensureDir(dir) {
   }
 }
 
+/** Sanitize an ID to prevent path traversal or code injection */
+export function sanitizeId(id) {
+  if (typeof id !== 'string') return '';
+  return id.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+}
+
 /** Initialize DB from disk at startup */
 export function initDB() {
   if (initialized) return;
@@ -28,7 +34,10 @@ export function initDB() {
         const list = JSON.parse(raw);
         if (Array.isArray(list)) {
           for (const item of list) {
-            if (item && item.id) recordsMap.set(item.id, item);
+            if (item && item.id) {
+              item.tenantId = item.tenantId || 'default';
+              recordsMap.set(item.id, item);
+            }
           }
         }
       }
@@ -64,12 +73,18 @@ export function flushToDisk() {
   }
 }
 
-/** Retrieve all records with optional filtering & sorting */
+/** Retrieve all records with optional tenant isolation, filtering & sorting */
 export function getAllRecords(options = {}) {
   initDB();
   let list = Array.from(recordsMap.values());
 
-  const { search, event, role, priority, scanMode, limit, offset } = options;
+  const { search, event, role, priority, scanMode, tenantId, limit, offset } = options;
+
+  // Strict tenant isolation if tenantId is specified
+  if (tenantId) {
+    const tLower = String(tenantId).toLowerCase().trim();
+    list = list.filter((r) => (r.tenantId || 'default').toLowerCase().trim() === tLower);
+  }
 
   if (event) {
     const evLower = String(event).toLowerCase().trim();
@@ -126,72 +141,108 @@ export function getAllRecords(options = {}) {
   return { total, records: paginated };
 }
 
-/** Get a single record by ID */
-export function getRecordById(id) {
+/** Get a single record by ID with optional tenant check */
+export function getRecordById(id, tenantId) {
   initDB();
-  return recordsMap.get(id) || null;
+  const cleanId = sanitizeId(id);
+  if (!cleanId) return null;
+  const rec = recordsMap.get(cleanId) || null;
+  if (!rec) return null;
+  if (tenantId) {
+    const tLower = String(tenantId).toLowerCase().trim();
+    if ((rec.tenantId || 'default').toLowerCase().trim() !== tLower) {
+      return null;
+    }
+  }
+  return rec;
 }
 
-/** Upsert a record (insert or update) */
-export function upsertRecord(record) {
+/** Upsert a record (insert or update) with tenant stamping */
+export function upsertRecord(record, tenantId = 'default') {
   if (!record || !record.id) throw new Error('Missing record or record.id');
   initDB();
-  const existing = recordsMap.get(record.id);
+  const cleanId = sanitizeId(record.id);
+  const existing = recordsMap.get(cleanId);
   const updated = {
     ...existing,
     ...record,
+    id: cleanId,
+    tenantId: record.tenantId || existing?.tenantId || tenantId || 'default',
     updatedAt: record.updatedAt || Date.now(),
     createdAt: existing?.createdAt || record.createdAt || Date.now(),
   };
-  recordsMap.set(record.id, updated);
+  recordsMap.set(cleanId, updated);
   schedulePersist();
   return updated;
 }
 
 /** Update specific fields of a record */
-export function patchRecord(id, patch) {
+export function patchRecord(id, patch, tenantId) {
   initDB();
-  const existing = recordsMap.get(id);
+  const cleanId = sanitizeId(id);
+  const existing = recordsMap.get(cleanId);
   if (!existing) return null;
+  if (tenantId) {
+    const tLower = String(tenantId).toLowerCase().trim();
+    if ((existing.tenantId || 'default').toLowerCase().trim() !== tLower) {
+      return null;
+    }
+  }
   const updated = {
     ...existing,
     ...patch,
-    id, // ensure ID is immutable
+    id: cleanId,
     updatedAt: Date.now(),
   };
-  recordsMap.set(id, updated);
+  recordsMap.set(cleanId, updated);
   schedulePersist();
   return updated;
 }
 
-/** Delete a record by ID */
-export function deleteRecord(id) {
+/** Delete a record by ID with tenant check */
+export function deleteRecord(id, tenantId) {
   initDB();
-  const existed = recordsMap.delete(id);
+  const cleanId = sanitizeId(id);
+  const existing = recordsMap.get(cleanId);
+  if (!existing) return false;
+  if (tenantId) {
+    const tLower = String(tenantId).toLowerCase().trim();
+    if ((existing.tenantId || 'default').toLowerCase().trim() !== tLower) {
+      return false;
+    }
+  }
+  const existed = recordsMap.delete(cleanId);
   if (existed) schedulePersist();
   return existed;
 }
 
 /** Batch sync multiple records from client (merges offline scans) */
-export function syncRecords(clientRecords = []) {
+export function syncRecords(clientRecords = [], tenantId = 'default') {
   initDB();
   let createdCount = 0;
   let updatedCount = 0;
 
   for (const clientRec of clientRecords) {
     if (!clientRec || !clientRec.id) continue;
-    const existing = recordsMap.get(clientRec.id);
+    const cleanId = sanitizeId(clientRec.id);
+    const existing = recordsMap.get(cleanId);
     if (!existing) {
-      recordsMap.set(clientRec.id, { ...clientRec, updatedAt: Date.now() });
+      recordsMap.set(cleanId, {
+        ...clientRec,
+        id: cleanId,
+        tenantId: clientRec.tenantId || tenantId || 'default',
+        updatedAt: Date.now(),
+      });
       createdCount++;
     } else {
-      // Keep newer version or merge notes & action items
       const clientTime = clientRec.updatedAt || clientRec.createdAt || 0;
       const serverTime = existing.updatedAt || existing.createdAt || 0;
       if (clientTime >= serverTime) {
-        recordsMap.set(clientRec.id, {
+        recordsMap.set(cleanId, {
           ...existing,
           ...clientRec,
+          id: cleanId,
+          tenantId: existing.tenantId || tenantId || 'default',
           updatedAt: Date.now(),
         });
         updatedCount++;
@@ -203,18 +254,28 @@ export function syncRecords(clientRecords = []) {
     schedulePersist();
   }
 
+  let list = Array.from(recordsMap.values());
+  if (tenantId) {
+    const tLower = String(tenantId).toLowerCase().trim();
+    list = list.filter((r) => (r.tenantId || 'default').toLowerCase().trim() === tLower);
+  }
+
   return {
-    total: recordsMap.size,
+    total: list.length,
     created: createdCount,
     updated: updatedCount,
-    records: Array.from(recordsMap.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)),
+    records: list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)),
   };
 }
 
-/** Compute real-time analytics & Event ROI */
-export function getAnalytics() {
+/** Compute real-time analytics & Event ROI with tenant scope */
+export function getAnalytics(tenantId) {
   initDB();
-  const all = Array.from(recordsMap.values());
+  let all = Array.from(recordsMap.values());
+  if (tenantId) {
+    const tLower = String(tenantId).toLowerCase().trim();
+    all = all.filter((r) => (r.tenantId || 'default').toLowerCase().trim() === tLower);
+  }
 
   const eventStats = {};
   const roleCounts = {};
@@ -223,7 +284,6 @@ export function getAnalytics() {
   let totalActionItems = 0;
 
   for (const r of all) {
-    // Event aggregation
     const ev = r.event?.trim() || 'No Event Tagged';
     if (!eventStats[ev]) {
       eventStats[ev] = { count: 0, hotLeads: 0, dealValues: [], actionItemsCount: 0 };
@@ -236,16 +296,13 @@ export function getAnalytics() {
       totalActionItems += r.actionItems.length;
     }
 
-    // Role breakdown
     const role = r.contactRole || 'unassigned';
     roleCounts[role] = (roleCounts[role] || 0) + 1;
 
-    // Priority breakdown
     if (r.priority && priorityCounts[r.priority] !== undefined) {
       priorityCounts[r.priority]++;
     }
 
-    // KYC breakdown
     const kycTier = r.dossier?.kyc?.tier;
     if (kycTier && kycCounts[kycTier] !== undefined) {
       kycCounts[kycTier]++;

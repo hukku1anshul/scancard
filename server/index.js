@@ -15,11 +15,29 @@ import {
   syncRecords,
   getAnalytics,
   flushToDisk,
+  sanitizeId,
 } from './db.js';
 import { renderExecutiveHtmlReport } from './report.js';
 
 const app = express();
+
+// Security headers middleware
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
+
+// JSON body parser with 25mb limit for camera/photo uploads
 app.use(express.json({ limit: '25mb' }));
+
+// Helper to extract sanitized tenant / workspace ID
+const getTenant = (req) => {
+  const raw = req.get('x-ci-tenant') || req.query.tenantId || req.body?.tenantId || 'default';
+  return sanitizeId(raw) || 'default';
+};
 
 // Initialize persistent database
 initDB();
@@ -29,50 +47,55 @@ app.get('/api/health', (req, res) => {
   res.json(capabilities(resolveConfig(req)));
 });
 
-/** GET /api/analytics */
+/** GET /api/analytics (tenant-scoped) */
 app.get('/api/analytics', (req, res) => {
   try {
-    res.json({ ok: true, ...getAnalytics() });
+    const tenantId = getTenant(req);
+    res.json({ ok: true, tenantId, ...getAnalytics(tenantId) });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
 
-/** GET /api/records */
+/** GET /api/records (tenant-scoped) */
 app.get('/api/records', (req, res) => {
   try {
-    const data = getAllRecords(req.query);
-    res.json({ ok: true, ...data });
+    const tenantId = getTenant(req);
+    const data = getAllRecords({ ...req.query, tenantId });
+    res.json({ ok: true, tenantId, ...data });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
 
-/** GET /api/records/:id */
+/** GET /api/records/:id (tenant-scoped) */
 app.get('/api/records/:id', (req, res) => {
-  const rec = getRecordById(req.params.id);
+  const tenantId = getTenant(req);
+  const rec = getRecordById(req.params.id, tenantId);
   if (!rec) return res.status(404).json({ ok: false, message: 'Record not found' });
   res.json({ ok: true, record: rec });
 });
 
-/** POST /api/records */
+/** POST /api/records (tenant-stamped) */
 app.post('/api/records', (req, res) => {
   try {
+    const tenantId = getTenant(req);
     const record = req.body?.record;
     if (!record || !record.id) return res.status(400).json({ ok: false, message: 'Missing record or record.id' });
-    const saved = upsertRecord(record);
+    const saved = upsertRecord(record, tenantId);
     res.json({ ok: true, record: saved });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
 
-/** POST /api/records/sync (batch merge offline scans) */
+/** POST /api/records/sync (batch merge offline scans into tenant workspace) */
 app.post('/api/records/sync', (req, res) => {
   try {
+    const tenantId = getTenant(req);
     const list = req.body?.records || [];
-    const result = syncRecords(list);
-    res.json({ ok: true, ...result });
+    const result = syncRecords(list, tenantId);
+    res.json({ ok: true, tenantId, ...result });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
@@ -81,7 +104,8 @@ app.post('/api/records/sync', (req, res) => {
 /** PATCH /api/records/:id */
 app.patch('/api/records/:id', (req, res) => {
   try {
-    const updated = patchRecord(req.params.id, req.body || {});
+    const tenantId = getTenant(req);
+    const updated = patchRecord(req.params.id, req.body || {}, tenantId);
     if (!updated) return res.status(404).json({ ok: false, message: 'Record not found' });
     res.json({ ok: true, record: updated });
   } catch (err) {
@@ -91,13 +115,16 @@ app.patch('/api/records/:id', (req, res) => {
 
 /** DELETE /api/records/:id */
 app.delete('/api/records/:id', (req, res) => {
-  const deleted = deleteRecord(req.params.id);
+  const tenantId = getTenant(req);
+  const deleted = deleteRecord(req.params.id, tenantId);
   res.json({ ok: true, deleted });
 });
 
 /** GET /api/export/report/:id (Printable Executive KYC & Company Dossier) */
 app.get('/api/export/report/:id', (req, res) => {
-  const rec = getRecordById(req.params.id);
+  const tenantId = getTenant(req);
+  const cleanId = sanitizeId(req.params.id);
+  const rec = getRecordById(cleanId, tenantId) || getRecordById(cleanId); // fallback for direct link
   if (!rec) return res.status(404).send('Record not found');
   const html = renderExecutiveHtmlReport(rec);
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -139,13 +166,13 @@ app.post('/api/crm/:provider', async (req, res) => {
     if (req.params.provider === 'hubspot') {
       if (!cfg.hubspotToken) throw new Error('HubSpot token not configured');
       const result = await pushHubSpot(record, cfg.hubspotToken);
-      if (record.id) patchRecord(record.id, { crmSynced: { provider: 'hubspot', at: Date.now() } });
+      if (record.id) patchRecord(record.id, { crmSynced: { provider: 'hubspot', at: Date.now() } }, getTenant(req));
       return res.json(result);
     }
     if (req.params.provider === 'salesforce') {
       if (!cfg.sfInstanceUrl || !cfg.sfAccessToken) throw new Error('Salesforce instance URL / access token not configured');
       const result = await pushSalesforce(record, cfg.sfInstanceUrl, cfg.sfAccessToken);
-      if (record.id) patchRecord(record.id, { crmSynced: { provider: 'salesforce', at: Date.now() } });
+      if (record.id) patchRecord(record.id, { crmSynced: { provider: 'salesforce', at: Date.now() } }, getTenant(req));
       return res.json(result);
     }
     res.status(404).json({ ok: false, message: 'Unknown CRM provider' });
