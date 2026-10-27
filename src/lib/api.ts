@@ -62,3 +62,85 @@ export async function pushToCrm(provider: 'hubspot' | 'salesforce', record: Scan
     return { ok: false, message: (e as Error).message };
   }
 }
+
+// -------------------------------------------------------- Server Database API
+
+export async function fetchServerRecords(params: Record<string, string> = {}): Promise<ScanRecord[]> {
+  try {
+    const qs = new URLSearchParams(params).toString();
+    const r = await fetch(`/api/records${qs ? `?${qs}` : ''}`);
+    if (!r.ok) return [];
+    const d = await r.json();
+    return Array.isArray(d.records) ? d.records : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveServerRecord(record: ScanRecord): Promise<boolean> {
+  try {
+    const r = await fetch('/api/records', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ record }),
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function patchServerRecord(id: string, patch: Partial<ScanRecord>): Promise<boolean> {
+  try {
+    const r = await fetch(`/api/records/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function deleteServerRecord(id: string): Promise<boolean> {
+  try {
+    const r = await fetch(`/api/records/${id}`, { method: 'DELETE' });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function syncRecordsWithServer(localRecords: ScanRecord[]): Promise<ScanRecord[]> {
+  try {
+    const r = await fetch('/api/records/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ records: localRecords }),
+    });
+    if (!r.ok) return localRecords;
+    const d = await r.json();
+    return Array.isArray(d.records) ? d.records : localRecords;
+  } catch {
+    return localRecords;
+  }
+}
+
+export interface AnalyticsData {
+  totalScans: number;
+  totalActionItems: number;
+  priorityBreakdown: Record<string, number>;
+  roleBreakdown: Record<string, number>;
+  kycBreakdown: Record<string, number>;
+  events: { name: string; count: number; hotLeads: number; dealValues: string[]; actionItemsCount: number }[];
+}
+
+export async function fetchAnalytics(): Promise<AnalyticsData | null> {
+  try {
+    const r = await fetch('/api/analytics');
+    return r.ok ? await r.json() : null;
+  } catch {
+    return null;
+  }
+}

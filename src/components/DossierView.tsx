@@ -3,7 +3,7 @@ import {
   ArrowLeft, Building2, Copy, Download, ExternalLink, Globe, Mail, MapPin, MessageSquare, Newspaper, Package, Pencil, Phone,
   ShieldCheck, Sparkles, Target, Trash2, TrendingUp, UserPlus, Users, Link2, Briefcase, AlertTriangle, Check, FileDown,
   RefreshCw, Send, Network, BadgeCheck, Loader2, X, History as HistoryIcon, Database, Calendar, Plus, StickyNote,
-  LocateFixed, Flame, Mic, MicOff, Bell, Share2, Store, CheckSquare, IndianRupee,
+  LocateFixed, Flame, Mic, MicOff, Bell, Share2, Store, CheckSquare, IndianRupee, Printer,
 } from 'lucide-react';
 import type { AssociatedContact, ContactRole, CrmResult, DossierTab, IdentityLevel, LeadPriority, ScanRecord, Settings, Validation } from '../types';
 import { Chips, ExtLink, Fact, Section, hostOf, initials } from './ui';
@@ -358,9 +358,20 @@ export default function DossierView({
           <button onClick={onBack} className="flex items-center gap-1 text-sm text-slate-400 hover:text-slate-200">
             <ArrowLeft className="h-4 w-4" /> All Scanned Cards
           </button>
-          <span className="text-xs text-slate-500">
-            Scanned {new Date(record.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
-          </span>
+          <div className="flex items-center gap-2">
+            <a
+              href={`/api/export/report/${record.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 rounded-full border border-indigo-400/40 bg-indigo-500/20 px-2.5 py-1 text-[11px] font-medium text-indigo-200 hover:bg-indigo-500/30"
+              title="Open Printable & PDF Executive KYC Report"
+            >
+              <Printer className="h-3 w-3" /> PDF Report
+            </a>
+            <span className="text-xs text-slate-500">
+              Scanned {new Date(record.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+            </span>
+          </div>
         </div>
 
         {record.demo && (

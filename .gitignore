@@ -2,4 +2,5 @@ node_modules
 dist
 .env
 server/.cache
+server/.data
 *.log

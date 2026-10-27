@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import {
   Search, FileDown, Trash2, ScanLine, Loader2, AlertTriangle, RotateCcw, Clock,
   MapPin, Calendar, Building2, Users, StickyNote, Sparkles, UserPlus, Bell, Flame, Phone, Mail,
-  MessageSquare, Copy, Check, CheckSquare, Store,
+  MessageSquare, Copy, Check, CheckSquare, Store, BarChart3, Printer, ShieldCheck,
 } from 'lucide-react';
 import type { DossierTab, LeadPriority, ScanRecord } from '../types';
 import { initials } from './ui';
@@ -18,7 +18,7 @@ interface Props {
   onScan: () => void;
 }
 
-type GroupMode = 'timeline' | 'event' | 'company';
+type GroupMode = 'timeline' | 'event' | 'company' | 'analytics';
 
 const PRIORITY_BADGE: Record<LeadPriority, { label: string; cls: string }> = {
   hot: { label: 'Hot', cls: 'bg-rose-500/20 text-rose-300 border-rose-400/30' },
@@ -179,17 +179,18 @@ export default function HistoryView({ history, canRetry, onRetry, onOpen, onDele
         </button>
       </div>
 
-      {/* View Mode Switcher: All Cards / By Event / By Company */}
-      <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-ink-800/90 p-1">
+      {/* View Mode Switcher: All Cards / By Event / By Company / Analytics */}
+      <div className="grid grid-cols-4 gap-1 rounded-xl bg-ink-800/90 p-1">
         {([
-          ['timeline', 'All Cards', Clock],
-          ['event', 'By Event & ROI', Calendar],
-          ['company', 'By Company', Building2],
+          ['timeline', 'Cards', Clock],
+          ['event', 'Events', Calendar],
+          ['company', 'Companies', Building2],
+          ['analytics', 'Analytics', BarChart3],
         ] as const).map(([id, label, Icon]) => (
           <button
             key={id}
             onClick={() => setMode(id)}
-            className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-medium transition ${
+            className={`flex items-center justify-center gap-1 rounded-lg py-2 text-xs font-medium transition ${
               mode === id ? 'bg-indigo-500 text-white shadow' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -445,6 +446,93 @@ export default function HistoryView({ history, canRetry, onRetry, onOpen, onDele
           })}
         </div>
       )}
+
+      {/* ============================================================ MODE 4: LIVE ANALYTICS & EVENT ROI */}
+      {mode === 'analytics' && (
+        <div className="space-y-4">
+          {/* Top High-Level Metrics */}
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+            <div className="rounded-2xl border border-white/10 bg-ink-800/80 p-3.5">
+              <div className="text-[11px] font-medium uppercase text-slate-400">Total Scans</div>
+              <div className="mt-1 text-2xl font-bold text-white">{history.length}</div>
+              <div className="text-[10px] text-slate-500">{totalCompanies} Unique Entities</div>
+            </div>
+            <div className="rounded-2xl border border-rose-400/20 bg-rose-500/10 p-3.5">
+              <div className="text-[11px] font-medium uppercase text-rose-300">Hot Leads</div>
+              <div className="mt-1 text-2xl font-bold text-rose-200">
+                {history.filter((r) => r.priority === 'hot').length}
+              </div>
+              <div className="text-[10px] text-rose-300/70">
+                {history.filter((r) => r.priority === 'warm').length} Warm Leads
+              </div>
+            </div>
+            <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-3.5">
+              <div className="text-[11px] font-medium uppercase text-emerald-300">Action Items</div>
+              <div className="mt-1 text-2xl font-bold text-emerald-200">
+                {history.reduce((a, r) => a + (r.actionItems?.length || 0), 0)}
+              </div>
+              <div className="text-[10px] text-emerald-300/70">Pending Follow-ups</div>
+            </div>
+            <div className="rounded-2xl border border-indigo-400/20 bg-indigo-500/10 p-3.5">
+              <div className="text-[11px] font-medium uppercase text-indigo-300">KYC Verified</div>
+              <div className="mt-1 text-2xl font-bold text-indigo-200">
+                {history.filter((r) => r.dossier?.kyc?.tier === 'verified').length}
+              </div>
+              <div className="text-[10px] text-indigo-300/70">Verified Entities</div>
+            </div>
+          </div>
+
+          {/* Event Breakdown Table */}
+          <div className="rounded-2xl border border-white/10 bg-ink-800/70 p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wide text-indigo-300">Events & Field Performance</span>
+              <button
+                onClick={() => downloadFile('all-cards-export.csv', toCSV(history), 'text/csv')}
+                className="flex items-center gap-1 rounded-xl bg-indigo-500/20 px-2.5 py-1 text-xs font-medium text-indigo-200 hover:bg-indigo-500/30"
+              >
+                <FileDown className="h-3.5 w-3.5" /> Export All CSV
+              </button>
+            </div>
+            <div className="space-y-2">
+              {byEvent.map(([ev, recs]) => {
+                const deals = recs.map((r) => r.dealValue).filter(Boolean);
+                const hot = recs.filter((r) => r.priority === 'hot').length;
+                return (
+                  <div key={ev} className="flex items-center justify-between rounded-xl bg-white/[0.03] p-2.5 text-xs">
+                    <div>
+                      <div className="font-medium text-slate-200">{ev}</div>
+                      <div className="text-[11px] text-slate-400">
+                        {recs.length} cards · {hot} hot leads{deals.length ? ` · Deals: ${deals.join(', ')}` : ''}
+                      </div>
+                    </div>
+                    <span className="rounded-lg bg-indigo-500/20 px-2 py-1 font-semibold text-indigo-300">
+                      {recs.length}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Lead Role Breakdown */}
+          <div className="rounded-2xl border border-white/10 bg-ink-800/70 p-4">
+            <span className="mb-2.5 block text-xs font-semibold uppercase tracking-wide text-fuchsia-300">
+              Pipeline By Relationship Role
+            </span>
+            <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+              {(['buyer', 'distributor', 'vendor', 'partner'] as const).map((rl) => {
+                const count = history.filter((r) => r.contactRole === rl).length;
+                return (
+                  <div key={rl} className="rounded-xl bg-white/[0.03] p-2.5">
+                    <div className="capitalize text-slate-400">{rl}</div>
+                    <div className="text-lg font-bold text-white">{count}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -515,6 +603,11 @@ function CardHistoryItem({
                 {r.contactRole && (
                   <span className="rounded-full bg-fuchsia-500/15 px-2 py-0.2 text-[10px] font-medium capitalize text-fuchsia-200">
                     {r.contactRole}
+                  </span>
+                )}
+                {r.scanMode && r.scanMode !== 'card' && (
+                  <span className="rounded-full bg-indigo-500/15 px-2 py-0.2 text-[10px] font-medium text-indigo-300">
+                    {r.scanMode.replace('_', ' ')}
                   </span>
                 )}
                 {r.dealValue && (
@@ -628,7 +721,7 @@ function CardHistoryItem({
         </div>
       </div>
 
-      {/* Action links footer: Revisit Company 360° Details, Add Colleague/Info, or 1-Tap WhatsApp */}
+      {/* Action links footer: Revisit Company 360° Details, Add Colleague/Info, PDF Report, or 1-Tap WhatsApp */}
       {openable && (
         <div className="mt-2.5 flex items-center gap-1.5 border-t border-white/5 pt-2.5">
           <button
@@ -641,8 +734,17 @@ function CardHistoryItem({
             onClick={() => onOpen(r, 'notes')}
             className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-white/5 py-1.5 text-xs font-medium text-slate-200 transition hover:bg-white/10"
           >
-            <UserPlus className="h-3.5 w-3.5 text-fuchsia-300" /> + Team / Info
+            <UserPlus className="h-3.5 w-3.5 text-fuchsia-300" /> + Team
           </button>
+          <a
+            href={`/api/export/report/${r.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-1 rounded-xl bg-white/5 px-2.5 py-1.5 text-xs font-medium text-indigo-300 transition hover:bg-white/10"
+            title="Download / Print Executive PDF Report"
+          >
+            <Printer className="h-3.5 w-3.5" /> PDF
+          </a>
           {waNumber && (
             <a
               href={`https://wa.me/${waNumber}`}

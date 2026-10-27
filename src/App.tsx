@@ -8,7 +8,16 @@ import HistoryView from './components/HistoryView';
 import SettingsView from './components/SettingsView';
 import MyDigitalCardModal from './components/MyDigitalCardModal';
 import ShareTargetSheet, { type SharedLink } from './components/ShareTargetSheet';
-import { fetchHealth, pushToCrm, streamScan, type ScanPayload } from './lib/api';
+import {
+  deleteServerRecord,
+  fetchHealth,
+  patchServerRecord,
+  pushToCrm,
+  saveServerRecord,
+  streamScan,
+  syncRecordsWithServer,
+  type ScanPayload,
+} from './lib/api';
 import { prepareImage } from './lib/image';
 import { applyServerDefaults, loadHistory, loadSettings, saveHistory, saveSettings, uid } from './lib/storage';
 import type { Card, ContactRole, DossierTab, Health, MeetingNote, ScanLocation, ScanMode, ScanRecord, Settings, StepId, StepState } from './types';
@@ -119,6 +128,14 @@ export default function App() {
 
   useEffect(() => saveHistory(history), [history]);
   useEffect(() => {
+    // Initial server sync & capabilities fetch
+    syncRecordsWithServer(history).then((merged) => {
+      if (merged && merged.length > 0) {
+        setHistory(merged);
+        saveHistory(merged);
+      }
+    });
+
     fetchHealth().then((h) => {
       setHealth(h);
       if (h?.defaults) {
@@ -139,6 +156,7 @@ export default function App() {
   const demoMode = health ? !health.gemini : false;
   const patchRecord = useCallback((id: string, patch: Partial<ScanRecord>) => {
     setHistory((h) => h.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+    patchServerRecord(id, patch);
   }, []);
 
   // ---------------------------------------------------------------- foreground
@@ -216,6 +234,7 @@ export default function App() {
                   associatedContacts: prev?.associatedContacts ?? [],
                   meetingNotes: [...(meta?.initialNotes || []), ...(prev?.meetingNotes || [])],
                 };
+                saveServerRecord(record);
                 return [record, ...h.filter((r) => r.id !== record.id)];
               });
               if (mergedDuplicate) {
@@ -417,6 +436,7 @@ export default function App() {
             }}
             onPushCrm={(provider) => pushToCrm(provider, current, settings)}
             onDelete={() => {
+              deleteServerRecord(current.id);
               setHistory((h) => h.filter((r) => r.id !== current.id));
               setCurrentId(null);
               setView('history');
@@ -435,6 +455,7 @@ export default function App() {
               window.scrollTo({ top: 0 });
             }}
             onDelete={(id) => {
+              deleteServerRecord(id);
               pending.current.delete(id);
               setHistory((h) => h.filter((r) => r.id !== id));
             }}
