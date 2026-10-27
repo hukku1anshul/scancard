@@ -1138,6 +1138,49 @@ export default function DossierView({
               )}
             </Section>
 
+            {d.kyc && (
+              <Section
+                title="Vendor KYC & Entity Trust Scorecard"
+                icon={<ShieldCheck className="h-4 w-4 text-emerald-300" />}
+                action={
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                      d.kyc.tier === 'verified'
+                        ? 'bg-emerald-500/20 text-emerald-300'
+                        : d.kyc.tier === 'standard'
+                          ? 'bg-amber-500/20 text-amber-300'
+                          : 'bg-rose-500/20 text-rose-300'
+                    }`}
+                  >
+                    {d.kyc.score}/100 · {d.kyc.tier === 'verified' ? 'Verified Entity' : d.kyc.tier === 'standard' ? 'Standard Commercial' : 'Manual Review'}
+                  </span>
+                }
+              >
+                <p className="mb-3 text-xs text-slate-300">{d.kyc.summary}</p>
+                <div className="space-y-2">
+                  {d.kyc.checks.map((chk, idx) => (
+                    <div key={idx} className="flex items-start gap-2.5 rounded-xl bg-white/[0.03] p-2.5 text-xs">
+                      <span
+                        className={`mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+                          chk.status === 'verified'
+                            ? 'bg-emerald-500/25 text-emerald-300'
+                            : chk.status === 'warning'
+                              ? 'bg-amber-500/25 text-amber-300'
+                              : 'bg-rose-500/25 text-rose-300'
+                        }`}
+                      >
+                        {chk.status === 'verified' ? '✓' : chk.status === 'warning' ? '!' : '–'}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium text-slate-200">{chk.label}</div>
+                        <div className="text-[11px] text-slate-400">{chk.detail}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Section>
+            )}
+
             {d.familyTree && (
               <Section title="Corporate family tree" icon={<Network className="h-4 w-4 text-indigo-300" />}>
                 <div className="space-y-1.5 text-sm">

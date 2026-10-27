@@ -11,7 +11,7 @@ import ShareTargetSheet, { type SharedLink } from './components/ShareTargetSheet
 import { fetchHealth, pushToCrm, streamScan, type ScanPayload } from './lib/api';
 import { prepareImage } from './lib/image';
 import { applyServerDefaults, loadHistory, loadSettings, saveHistory, saveSettings, uid } from './lib/storage';
-import type { Card, ContactRole, DossierTab, Health, MeetingNote, ScanLocation, ScanRecord, Settings, StepId, StepState } from './types';
+import type { Card, ContactRole, DossierTab, Health, MeetingNote, ScanLocation, ScanMode, ScanRecord, Settings, StepId, StepState } from './types';
 
 type View = 'scan' | 'processing' | 'dossier' | 'history' | 'settings';
 
@@ -62,6 +62,7 @@ function findDuplicateRecord(list: ScanRecord[], card: Card, excludeId?: string)
 }
 
 interface JobMeta {
+  scanMode?: ScanMode | null;
   event?: string | null;
   booth?: string | null;
   location?: ScanLocation | null;
@@ -202,6 +203,7 @@ export default function App() {
                   dossier: evt.dossier,
                   demo: evt.demo,
                   status: 'done',
+                  scanMode: meta?.scanMode ?? prev?.scanMode ?? 'card',
                   event: meta?.event ?? prev?.event ?? null,
                   booth: meta?.booth ?? prev?.booth ?? null,
                   location: meta?.location ?? prev?.location ?? null,
@@ -270,11 +272,11 @@ export default function App() {
   const queueCount = history.filter((r) => r.status === 'queued' || r.status === 'processing').length;
 
   // ---------------------------------------------------------------- handlers
-  const onScanImages = async ({ images, qrCard, event, booth, location, contactRole, actionItems, initialNote }: ScanContextInput) => {
+  const onScanImages = async ({ images, qrCard, scanMode = 'card', event, booth, location, contactRole, actionItems, initialNote }: ScanContextInput) => {
     const thumb = images?.[0] ? (await prepareImage(images[0].dataUrl, 480, 0.7)).dataUrl : undefined;
     const payload: ScanPayload = qrCard && !images?.length
-      ? { card: qrCard }
-      : { images: (images || []).map(({ data, mimeType }) => ({ data, mimeType })), ...(qrCard ? { card: qrCard } : {}) };
+      ? { card: qrCard, scanMode }
+      : { images: (images || []).map(({ data, mimeType }) => ({ data, mimeType })), scanMode, ...(qrCard ? { card: qrCard } : {}) };
     const initialNotes: MeetingNote[] = initialNote ? [{ id: uid(), text: initialNote, createdAt: Date.now() }] : [];
     if (settings.eventMode) {
       const id = uid();
@@ -286,6 +288,7 @@ export default function App() {
           thumb,
           card: qrCard || emptyCard(),
           status: 'queued',
+          scanMode,
           event: event || null,
           booth: booth || null,
           location: location || null,
@@ -300,7 +303,7 @@ export default function App() {
       setToast(`Card queued (${queueCount + 1} in progress). Keep scanning!`);
       return;
     }
-    runJob(payload, thumb, undefined, { event, booth, location, contactRole, actionItems, initialNotes });
+    runJob(payload, thumb, undefined, { scanMode, event, booth, location, contactRole, actionItems, initialNotes });
   };
 
   const retryQueued = (id: string) => {

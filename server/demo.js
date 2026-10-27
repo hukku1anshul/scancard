@@ -163,6 +163,18 @@ const DEMO_DOSSIER_INDIA = {
     ],
     website: { domain: 'bharatprecision.co.in', resolves: true },
   },
+  kyc: {
+    score: 96,
+    tier: 'verified',
+    summary: 'Strong statutory & digital verification — suitable for B2B onboarding, procurement & credit review.',
+    checks: [
+      { label: 'GSTIN & PAN Tax Structure', status: 'verified', detail: 'Valid 15-digit GSTIN (27AABCB4512R1Z6) · Embedded PAN: AABCB4512R · State: Maharashtra' },
+      { label: 'Corporate Registry & Legal Entity', status: 'verified', detail: 'India MCA / GST, GLEIF (CIN: U28100MH2015PTC268901 · LEI: 335800DEMOIND000001Z · Est. 2015)' },
+      { label: 'Corporate Domain & Email MX', status: 'verified', detail: 'Verified corporate email server (rajesh.d@bharatprecision.co.in → mx.bharatprecision.co.in)' },
+      { label: 'Digital & Trade Footprint', status: 'verified', detail: '6 website page(s) crawled · 3 official profile(s) · 4 corroborated web sources' },
+      { label: 'Telecom & WhatsApp Number Format', status: 'verified', detail: 'Valid ITU/E.164 number (+91 98220 45120, IN)' },
+    ],
+  },
 };
 
 export async function runDemo(body, emit) {

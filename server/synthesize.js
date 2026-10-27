@@ -240,6 +240,128 @@ function familyTree(R) {
   return t.ultimateParent || t.parent || t.subsidiaries.length ? t : null;
 }
 
+function buildKycScorecard(card, d, evidence) {
+  const checks = [];
+  let score = 20;
+  const c = d.company || {};
+  const val = evidence.validation || {};
+  const R = evidence.registry || {};
+  const ind = okOrNull(R.india);
+
+  // 1) Statutory Tax / GSTIN Check
+  if (c.gstin) {
+    score += 22;
+    checks.push({
+      label: 'GSTIN & PAN Tax Structure',
+      status: 'verified',
+      detail: `Valid 15-digit GSTIN (${c.gstin})${c.pan ? ` · Embedded PAN: ${c.pan}` : ''}${ind?.state ? ` · State: ${ind.state}` : ''}`,
+    });
+  } else if (val.country === 'IN') {
+    checks.push({
+      label: 'GSTIN Tax ID',
+      status: 'missing',
+      detail: 'No GSTIN printed on scan — request GST certificate before raising tax invoice/PO',
+    });
+  }
+
+  // 2) Official Corporate Registry (MCA CIN, GLEIF, SEC, CH, OpenCorporates, D&B)
+  const regSources = (d.registryRecords || []).map((r) => r.source);
+  if (c.cin || c.lei || c.dunsNumber || regSources.length > 0) {
+    score += 24;
+    const idParts = [
+      c.cin && `CIN: ${c.cin}`,
+      c.lei && `LEI: ${c.lei}`,
+      c.dunsNumber && `D-U-N-S: ${c.dunsNumber}`,
+      c.founded && `Est. ${c.founded}`,
+    ].filter(Boolean);
+    checks.push({
+      label: 'Corporate Registry & Legal Entity',
+      status: 'verified',
+      detail: `${regSources.join(', ') || 'Official Registry'} (${idParts.join(' · ') || c.ownership || 'Registered'})`,
+    });
+  } else {
+    checks.push({
+      label: 'Corporate Registry Match',
+      status: 'warning',
+      detail: 'Unlisted / proprietorship or no public statutory registry record matched automatically',
+    });
+  }
+
+  // 3) Corporate Domain & Email MX Server Check
+  const validCorpEmail = (val.emails || []).find((e) => e.mx && !e.freeMail && !e.disposable);
+  const validFreeEmail = (val.emails || []).find((e) => e.mx && e.freeMail);
+  if (validCorpEmail || val.website?.resolves) {
+    score += 18;
+    checks.push({
+      label: 'Corporate Domain & Email MX',
+      status: 'verified',
+      detail: validCorpEmail
+        ? `Verified corporate email server (${validCorpEmail.value} → ${validCorpEmail.mxHost || 'MX active'})`
+        : `Active corporate domain (${val.website?.domain})`,
+    });
+  } else if (validFreeEmail) {
+    score += 8;
+    checks.push({
+      label: 'Email Domain Check',
+      status: 'warning',
+      detail: `Uses personal/free email provider (${validFreeEmail.value}) — common for MSMEs/traders, verify business ownership`,
+    });
+  } else {
+    checks.push({
+      label: 'Domain & Email Verification',
+      status: 'missing',
+      detail: 'No resolving corporate domain or verified email MX server found on scan',
+    });
+  }
+
+  // 4) Live Web, B2B Marketplace & Social Footprint
+  const pageCount = evidence.crawl?.pages?.length || 0;
+  const socialCount = (d.socialPresence || []).length;
+  if (pageCount > 0 || socialCount > 0 || (d.sources || []).length >= 3) {
+    score += 16;
+    checks.push({
+      label: 'Digital & Trade Footprint',
+      status: 'verified',
+      detail: `${pageCount ? `${pageCount} website page(s) crawled · ` : ''}${socialCount} official profile(s) · ${(d.sources || []).length} corroborated web sources`,
+    });
+  } else {
+    checks.push({
+      label: 'Digital & Trade Footprint',
+      status: 'warning',
+      detail: 'Limited public digital footprint — recommended to verify physical shop/office via GPS tag',
+    });
+  }
+
+  // 5) Direct Phone / WhatsApp Reachability
+  const validPhone = (val.phones || []).find((p) => p.valid);
+  if (validPhone) {
+    score += 10;
+    checks.push({
+      label: 'Telecom & WhatsApp Number Format',
+      status: 'verified',
+      detail: `Valid ITU/E.164 number (${validPhone.international || validPhone.value}${validPhone.country ? `, ${validPhone.country}` : ''})`,
+    });
+  } else if ((card.phones || []).length > 0) {
+    score += 5;
+    checks.push({
+      label: 'Phone Number Format',
+      status: 'warning',
+      detail: `Number extracted (${card.phones[0].number}) — verify STD/country code`,
+    });
+  }
+
+  const finalScore = Math.min(100, Math.max(15, score));
+  const tier = finalScore >= 75 ? 'verified' : finalScore >= 48 ? 'standard' : 'review';
+  const summary =
+    tier === 'verified'
+      ? 'Strong statutory & digital verification — suitable for B2B onboarding, procurement & credit review.'
+      : tier === 'standard'
+        ? 'Standard commercial profile — core contact details verified; request missing statutory IDs if onboarding as a vendor.'
+        : 'Limited statutory/public records — perform physical site check or request GST/PAN documents before commercial credit.';
+
+  return { score: finalScore, tier, summary, checks };
+}
+
 /** Deterministic post-processing: merge verified data, identity, validation and sources. */
 export function finalize(d, card, evidence) {
   d = d && typeof d === 'object' ? d : {};
@@ -331,6 +453,7 @@ export function finalize(d, card, evidence) {
   if (personId.level === 'possible') d.caveats.push('LinkedIn profile match is only "possible" — confirm before outreach.');
 
   d.validation = evidence.validation || null;
+  d.kyc = buildKycScorecard(card, d, evidence);
   d.searchProvider = evidence.provider;
   d.grounded = Object.values(evidence.research || {}).some(ok);
   d.cachedAt = evidence.cachedAt || null;

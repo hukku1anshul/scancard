@@ -46,6 +46,21 @@ export interface FamilyNode {
   source: string;
 }
 
+export type ScanMode = 'card' | 'stall_signboard' | 'invoice_kyc' | 'product_pack' | 'digital_screenshot';
+
+export interface KycCheckItem {
+  label: string;
+  status: 'verified' | 'warning' | 'missing';
+  detail: string;
+}
+
+export interface KycScorecard {
+  score: number; // 0..100
+  tier: 'verified' | 'standard' | 'review';
+  summary: string;
+  checks: KycCheckItem[];
+}
+
 export interface Dossier {
   company: {
     name: string;
@@ -109,6 +124,7 @@ export interface Dossier {
     company: { level: IdentityLevel; score: number; reasons: string[] };
   };
   validation?: Validation | null;
+  kyc?: KycScorecard | null;
   searchProvider?: string;
   grounded?: boolean;
   cachedAt?: string | null;
@@ -175,6 +191,7 @@ export interface ScanRecord {
   progress?: string;
   error?: string;
   // Rich event, location, India & relationship context
+  scanMode?: ScanMode | null;
   event?: string | null;
   booth?: string | null;
   location?: ScanLocation | null;

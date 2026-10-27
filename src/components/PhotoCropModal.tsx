@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { ZoomIn, ZoomOut, RotateCw, Check, X, Maximize2, Move, RectangleHorizontal, RectangleVertical, Square } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCw, Check, X, Maximize2, Move, RectangleHorizontal, RectangleVertical, Square, FileText, Store } from 'lucide-react';
 
-type AspectMode = 'horizontal' | 'vertical' | 'square';
+type AspectMode = 'horizontal' | 'vertical' | 'banner' | 'document' | 'square';
 
 interface Props {
   source: Blob | string;
@@ -11,9 +11,11 @@ interface Props {
 }
 
 const ASPECT_RATIOS: Record<AspectMode, { ratio: number; label: string }> = {
-  horizontal: { ratio: 1.75, label: 'Horizontal' },
-  vertical: { ratio: 1 / 1.55, label: 'Vertical' },
-  square: { ratio: 1, label: 'Badge / QR' },
+  horizontal: { ratio: 1.75, label: 'Card (H)' },
+  vertical: { ratio: 1 / 1.55, label: 'Card (V)' },
+  banner: { ratio: 2.35, label: 'Signboard' },
+  document: { ratio: 1 / 1.35, label: 'Invoice / Doc' },
+  square: { ratio: 1, label: 'Badge / Box' },
 };
 
 /**
@@ -202,12 +204,14 @@ export default function PhotoCropModal({ source, sideLabel, onConfirm, onCancel 
       </div>
 
       {/* Aspect Ratio / Orientation Selector */}
-      <div className="flex items-center justify-center gap-2 px-4 pt-3">
+      <div className="flex flex-wrap items-center justify-center gap-1.5 px-4 pt-3">
         {(
           [
-            ['horizontal', RectangleHorizontal, 'Horizontal Card'],
-            ['vertical', RectangleVertical, 'Vertical Card'],
-            ['square', Square, 'QR / Badge'],
+            ['horizontal', RectangleHorizontal, 'Card (H)'],
+            ['vertical', RectangleVertical, 'Card (V)'],
+            ['banner', Store, 'Signboard'],
+            ['document', FileText, 'Invoice / Doc'],
+            ['square', Square, 'Badge / Box'],
           ] as const
         ).map(([id, Icon, label]) => (
           <button
@@ -217,7 +221,7 @@ export default function PhotoCropModal({ source, sideLabel, onConfirm, onCancel 
               setAspect(id);
               setPan({ x: 0, y: 0 });
             }}
-            className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+            className={`flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] font-medium transition ${
               aspect === id ? 'bg-indigo-500 text-white shadow' : 'bg-white/5 text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -227,7 +231,7 @@ export default function PhotoCropModal({ source, sideLabel, onConfirm, onCancel 
         <button
           type="button"
           onClick={rotate90}
-          className="flex items-center gap-1 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium text-indigo-200 hover:bg-white/15"
+          className="flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1.5 text-[11px] font-medium text-indigo-200 hover:bg-white/15"
           title="Rotate 90°"
         >
           <RotateCw className="h-3.5 w-3.5" /> Rotate
@@ -251,7 +255,7 @@ export default function PhotoCropModal({ source, sideLabel, onConfirm, onCancel 
           ref={frameRef}
           style={{ aspectRatio: String(ASPECT_RATIOS[aspect].ratio) }}
           className={`relative flex items-center justify-center overflow-visible rounded-2xl border-2 border-indigo-400/80 shadow-[0_0_0_9999px_rgba(3,7,18,0.78)] ${
-            aspect === 'vertical' ? 'h-[82%] max-h-[440px]' : aspect === 'square' ? 'h-[75%] max-h-[360px]' : 'w-[92%] max-w-lg'
+            aspect === 'vertical' || aspect === 'document' ? 'h-[82%] max-h-[440px]' : aspect === 'square' ? 'h-[75%] max-h-[360px]' : 'w-[92%] max-w-lg'
           }`}
         >
           {imgEl && (

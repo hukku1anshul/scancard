@@ -125,6 +125,14 @@ export function toMarkdown(r: ScanRecord): string {
     });
   }
   if (d) {
+    if (d.kyc) {
+      out.push(
+        '',
+        `## Vendor KYC & Entity Trust Scorecard (${d.kyc.score}/100 — ${d.kyc.tier.toUpperCase()})`,
+        d.kyc.summary,
+        ...d.kyc.checks.map((c) => `- [${c.status === 'verified' ? 'x' : ' '}] **${c.label}** (${c.status}): ${c.detail}`),
+      );
+    }
     out.push('', '## Company', d.company.summary || '');
     out.push(`- Industry: ${d.company.industry || '—'}`, `- HQ: ${d.company.headquarters || '—'}`, `- Employees: ${d.company.employeeRange || '—'}`, `- Revenue: ${d.company.revenueRange || '—'}`);
     if (d.products.length) out.push('', '## Products', ...d.products.map((p) => `- **${p.name}**: ${p.description}`));
@@ -141,7 +149,7 @@ const csvCell = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
 
 export function toCSV(records: ScanRecord[]): string {
   const cols = [
-    'Name', 'Title', 'Company', 'Event', 'Booth/Stall', 'Location', 'Priority', 'LeadRole', 'DealValue', 'ActionItems', 'FollowUpDate', 'Tags',
+    'Name', 'Title', 'Company', 'ScanMode', 'KycScore', 'Event', 'Booth/Stall', 'Location', 'Priority', 'LeadRole', 'DealValue', 'ActionItems', 'FollowUpDate', 'Tags',
     'Emails', 'Phones', 'Website', 'Address', 'GSTIN', 'CIN', 'LinkedIn',
     'OtherContactsMet', 'MeetingNotes',
     'Industry', 'HQ', 'Employees', 'Revenue', 'D-U-N-S', 'LEI', 'Parent', 'Summary', 'Scanned',
@@ -152,7 +160,7 @@ export function toCSV(records: ScanRecord[]): string {
     const assoc = (r.associatedContacts || []).map((a) => `${a.name}${a.role ? ` (${a.role})` : ''}${a.email ? ` <${a.email}>` : ''}${a.phone ? ` [${a.phone}]` : ''}`).join(' | ');
     const notes = (r.meetingNotes || []).map((n) => n.text).join(' | ');
     return [
-      c.fullName, c.jobTitle, c.company || d?.company.name, r.event, r.booth, r.location?.label, r.priority, r.contactRole, r.dealValue, (r.actionItems || []).join('; '), r.followUpDate, (r.tags || []).join('; '),
+      c.fullName, c.jobTitle, c.company || d?.company.name, r.scanMode || 'card', d?.kyc?.score ?? '', r.event, r.booth, r.location?.label, r.priority, r.contactRole, r.dealValue, (r.actionItems || []).join('; '), r.followUpDate, (r.tags || []).join('; '),
       c.emails.join('; '), c.phones.map((p) => p.number).join('; '), c.website, c.address,
       c.gstin || d?.company.gstin, c.cin || d?.company.cin,
       c.socials?.linkedin || d?.person?.linkedinUrl,

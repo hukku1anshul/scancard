@@ -1,18 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Camera, ImagePlus, ScanLine, Sparkles, X, Video, Building2, Globe, Users, Target, Layers, ChevronRight,
-  MapPin, Calendar, LocateFixed, Loader2, StickyNote, QrCode, Store, CheckSquare, Crop,
+  MapPin, Calendar, LocateFixed, Loader2, StickyNote, QrCode, Store, CheckSquare, Crop, FileCheck2, Package, Smartphone, CreditCard,
 } from 'lucide-react';
 import CameraCapture from './CameraCapture';
 import PhotoCropModal from './PhotoCropModal';
 import { prepareImage, type PreparedImage } from '../lib/image';
 import { captureGeoLocation } from '../lib/geo';
 import { detectQrFromImageSource, parseQrPayload } from '../lib/qr';
-import type { Card, ContactRole, ScanLocation } from '../types';
+import type { Card, ContactRole, ScanLocation, ScanMode } from '../types';
 
 export interface ScanContextInput {
   images?: PreparedImage[];
   qrCard?: Card;
+  scanMode?: ScanMode;
   event?: string | null;
   booth?: string | null;
   location?: ScanLocation | null;
@@ -42,14 +43,21 @@ const SAMPLES = [
   { src: '/samples/card-vertical.svg', label: 'Vertical card' },
 ];
 
-const QUICK_ACTIONS = [
-  'Send Catalog / Brochure',
-  'Send Price List / Quote',
-  'Book Demo',
-  'Share Sample',
-  'WhatsApp Intro',
-  'Factory / Office Visit',
+const SCAN_MODES: { id: ScanMode; label: string; desc: string; icon: typeof CreditCard; defaultRole?: ContactRole }[] = [
+  { id: 'card', label: 'Card / Badge', desc: 'Business cards & conference visitor badges', icon: CreditCard },
+  { id: 'stall_signboard', label: 'Stall / Signboard', desc: 'Expo booth fascia, shop signboards & building directories', icon: Store, defaultRole: 'distributor' },
+  { id: 'invoice_kyc', label: 'Invoice / KYC', desc: 'GST invoices, letterheads & vendor onboarding verification', icon: FileCheck2, defaultRole: 'vendor' },
+  { id: 'product_pack', label: 'Product / Label', desc: '"Manufactured by" box labels, machinery nameplates & brochures', icon: Package, defaultRole: 'vendor' },
+  { id: 'digital_screenshot', label: 'Screenshot', desc: 'Email signatures, LinkedIn profiles & WhatsApp contact cards', icon: Smartphone },
 ];
+
+const MODE_ACTIONS: Record<ScanMode, string[]> = {
+  card: ['Send Catalog / Brochure', 'Send Price List / Quote', 'Book Demo', 'Share Sample', 'WhatsApp Intro', 'Factory / Office Visit'],
+  stall_signboard: ['Send Dealer Terms', 'Check Territory Availability', 'Send Catalog / Brochure', 'Send Price List / Quote', 'Schedule Store Visit'],
+  invoice_kyc: ['Verify GST & PAN', 'Approve Vendor Onboarding', 'Request Cancelled Cheque', 'MSME Udyam Check', 'Site Visit Verified'],
+  product_pack: ['Request OEM Quote', 'Ask for MOQ & Bulk Pricing', 'Request Product Sample', 'Check Distributor Margin', 'Verify BIS / ISO Cert'],
+  digital_screenshot: ['Send LinkedIn Connection', 'WhatsApp Intro', 'Send Deck / Profile', 'Schedule Discovery Call'],
+};
 
 const ROLES: { id: ContactRole; label: string }[] = [
   { id: 'buyer', label: 'Buyer / Client' },
@@ -80,6 +88,7 @@ export default function ScanView({
   const [cropSession, setCropSession] = useState<{ source: Blob | string; side: 'front' | 'back' } | null>(null);
   const [camera, setCamera] = useState<null | 'front' | 'back'>(null);
   const [busy, setBusy] = useState(false);
+  const [scanMode, setScanMode] = useState<ScanMode>('card');
 
   // Event, Booth, GPS Location, Role & Action Checklist context
   const [eventName, setEventName] = useState(defaultEvent || '');
@@ -132,6 +141,7 @@ export default function ScanView({
     onScan({
       images: front ? ([front, back].filter(Boolean) as PreparedImage[]) : undefined,
       qrCard: decodedQrCard || undefined,
+      scanMode,
       event: cleanEvt,
       booth: booth.trim() || null,
       location,
@@ -211,6 +221,38 @@ export default function ScanView({
           </span>
         </div>
       )}
+
+      {/* Multi-Source Scan Mode Selector */}
+      <div className="rounded-2xl border border-white/10 bg-ink-800/80 p-3">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-indigo-300">What are you scanning?</span>
+          <span className="text-[11px] text-slate-400">{SCAN_MODES.find((m) => m.id === scanMode)?.desc}</span>
+        </div>
+        <div className="grid grid-cols-5 gap-1.5">
+          {SCAN_MODES.map((m) => {
+            const Icon = m.icon;
+            const active = scanMode === m.id;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => {
+                  setScanMode(m.id);
+                  if (m.defaultRole && !contactRole) setContactRole(m.defaultRole);
+                }}
+                className={`flex flex-col items-center gap-1 rounded-xl px-1.5 py-2 text-center text-[10px] font-medium transition ${
+                  active
+                    ? 'border border-indigo-400/50 bg-indigo-500/25 text-white shadow'
+                    : 'border border-white/5 bg-ink-900/60 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Icon className={`h-4 w-4 ${active ? 'text-indigo-300' : 'text-slate-400'}`} />
+                <span className="leading-tight">{m.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {/* Event, Booth/Stall, GPS Location & Quick Follow-up Checklist Bar */}
       <div className="space-y-2.5 rounded-2xl border border-white/10 bg-ink-800/80 p-3.5">
@@ -312,12 +354,12 @@ export default function ScanView({
           ))}
         </div>
 
-        {/* 1-Tap Expo Action Chips (Send Catalog, Price List, Demo, etc.) */}
+        {/* 1-Tap Mode-Adaptive Action Chips */}
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5">
           <span className="shrink-0 flex items-center gap-1 text-[10px] text-slate-500">
             <CheckSquare className="h-3 w-3 text-emerald-400" /> To-Do:
           </span>
-          {QUICK_ACTIONS.map((act) => {
+          {(MODE_ACTIONS[scanMode] || MODE_ACTIONS.card).map((act) => {
             const active = actionItems.includes(act);
             return (
               <button

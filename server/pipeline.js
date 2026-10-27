@@ -28,9 +28,9 @@ export async function runScan(body, cfg, emit, isClosed = () => false) {
     card = normalizeCard(body.card);
     step('extract', 'done', 'Using edited card details');
   } else {
-    step('extract', 'running', 'Gemini Vision is reading the card…');
-    card = await extractCard(body.images, cfg);
-    step('extract', 'done', [card.fullName, card.company].filter(Boolean).join(' · ') || 'Card parsed');
+    step('extract', 'running', 'Gemini Vision is reading the scan…');
+    card = await extractCard(body.images, cfg, body.scanMode);
+    step('extract', 'done', [card.fullName, card.company].filter(Boolean).join(' · ') || 'Scan parsed');
   }
   emit({ type: 'card', card });
 

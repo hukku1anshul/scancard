@@ -1,4 +1,4 @@
-import type { Card, CrmResult, Health, ScanEvent, ScanRecord, Settings } from '../types';
+import type { Card, CrmResult, Health, ScanEvent, ScanMode, ScanRecord, Settings } from '../types';
 
 export async function fetchHealth(_settings?: Settings): Promise<Health | null> {
   try {
@@ -12,6 +12,7 @@ export async function fetchHealth(_settings?: Settings): Promise<Health | null> 
 export interface ScanPayload {
   images?: { data: string; mimeType: string }[];
   card?: Card;
+  scanMode?: ScanMode;
   refresh?: boolean;
 }
 
