@@ -19,6 +19,10 @@ export const DEFAULT_SETTINGS: Settings = {
   sfInstanceUrl: '',
   sfAccessToken: '',
   eventMode: false,
+  defaultEvent: '',
+  autoGeo: true,
+  senderName: '',
+  senderCompany: '',
 };
 
 export function loadSettings(): Settings {

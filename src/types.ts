@@ -128,6 +128,35 @@ export type ScanEvent =
 
 export type RecordStatus = 'queued' | 'processing' | 'done' | 'error';
 
+export type LeadPriority = 'hot' | 'warm' | 'cold' | 'partner';
+
+export interface ScanLocation {
+  lat?: number;
+  lng?: number;
+  label: string;
+  capturedAt?: number;
+}
+
+export interface AssociatedContact {
+  id: string;
+  name: string;
+  role?: string;
+  department?: string;
+  email?: string;
+  phone?: string;
+  linkedin?: string;
+  notes?: string;
+  createdAt: number;
+}
+
+export interface MeetingNote {
+  id: string;
+  text: string;
+  createdAt: number;
+}
+
+export type DossierTab = 'overview' | 'contact' | 'notes' | 'offerings' | 'customers' | 'social' | 'pitch' | 'sources';
+
 export interface ScanRecord {
   id: string;
   createdAt: number;
@@ -138,6 +167,14 @@ export interface ScanRecord {
   status?: RecordStatus;
   progress?: string;
   error?: string;
+  // Rich event, location & relationship context
+  event?: string | null;
+  location?: ScanLocation | null;
+  priority?: LeadPriority | null;
+  tags?: string[];
+  followUpDate?: string | null; // YYYY-MM-DD
+  associatedContacts?: AssociatedContact[];
+  meetingNotes?: MeetingNote[];
 }
 
 export interface Settings {
@@ -156,6 +193,10 @@ export interface Settings {
   sfInstanceUrl: string;
   sfAccessToken: string;
   eventMode: boolean;
+  defaultEvent: string;
+  autoGeo: boolean;
+  senderName: string;
+  senderCompany: string;
 }
 
 export interface Health {

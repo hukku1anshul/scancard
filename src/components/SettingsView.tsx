@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { KeyRound, Check, Trash2, Server, Eye, EyeOff, Landmark, Gem, Send, Sparkles, ExternalLink } from 'lucide-react';
+import { KeyRound, Check, Trash2, Server, Eye, EyeOff, Landmark, Gem, Send, Sparkles, ExternalLink, UserCheck } from 'lucide-react';
 import type { Health, Settings } from '../types';
 import { Section } from './ui';
 
@@ -29,7 +29,7 @@ export default function SettingsView({ settings, health, onSave, onClearHistory 
       <input
         type={secret && !show ? 'password' : 'text'}
         value={s[k]}
-        onChange={(e) => setS({ ...s, [k]: e.target.value.trim() })}
+        onChange={(e) => setS({ ...s, [k]: secret ? e.target.value.trim() : e.target.value })}
         placeholder={placeholder}
         autoComplete="off"
         className="w-full rounded-xl border border-white/10 bg-ink-900 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
@@ -67,6 +67,20 @@ export default function SettingsView({ settings, health, onSave, onClearHistory 
         ) : (
           <p className="text-sm text-rose-300">API server unreachable. Start it with <code>npm run dev</code>.</p>
         )}
+      </Section>
+
+      <Section title="My profile & scan defaults" icon={<UserCheck className="h-4 w-4 text-indigo-300" />}>
+        <div className="space-y-3">
+          {input('Your name (for 1-tap follow-up emails & WhatsApp)', 'senderName', 'Alex Rivera', undefined, false)}
+          {input('Your company / title (optional sign-off)', 'senderCompany', 'VP Partnerships, Acme Corp', undefined, false)}
+          {input('Active event / conference tag', 'defaultEvent', 'e.g. Web Summit 2026', 'Automatically tagged on new scans until changed.', false)}
+          <Toggle
+            label="Auto-capture GPS location on scan"
+            desc="Tag each scanned business card with your GPS coordinates and city/venue name."
+            value={s.autoGeo}
+            onChange={(autoGeo) => setS({ ...s, autoGeo })}
+          />
+        </div>
       </Section>
 
       <Section title="AI & search" icon={<Sparkles className="h-4 w-4 text-indigo-300" />} action={eye}>
@@ -143,9 +157,11 @@ function Toggle({ label, desc, value, onChange }: { label: string; desc: string;
 
 function Status({ label, ok }: { label: string; ok?: boolean }) {
   return (
-    <div className={`rounded-xl px-2 py-2 ${ok ? 'bg-emerald-500/10 text-emerald-300' : 'bg-amber-500/10 text-amber-300'}`}>
-      <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${ok ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-      {label}
+    <div className="rounded-xl px-2 py-2 bg-white/5">
+      <div className={ok ? 'text-emerald-300' : 'text-amber-300'}>
+        <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${ok ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+        {label}
+      </div>
     </div>
   );
 }

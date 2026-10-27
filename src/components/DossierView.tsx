@@ -1,30 +1,54 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ArrowLeft, Building2, Copy, Download, ExternalLink, Globe, Mail, MapPin, MessageSquare, Newspaper, Package, Pencil, Phone,
   ShieldCheck, Sparkles, Target, Trash2, TrendingUp, UserPlus, Users, Link2, Briefcase, AlertTriangle, Check, FileDown,
-  RefreshCw, Send, Network, BadgeCheck, Loader2, X, History as HistoryIcon, Database,
+  RefreshCw, Send, Network, BadgeCheck, Loader2, X, History as HistoryIcon, Database, Calendar, Plus, StickyNote,
+  LocateFixed, Flame, Mic, MicOff, Bell, Share2,
 } from 'lucide-react';
-import type { CrmResult, IdentityLevel, ScanRecord, Validation } from '../types';
+import type { AssociatedContact, CrmResult, DossierTab, IdentityLevel, LeadPriority, ScanRecord, Settings, Validation } from '../types';
 import { Chips, ExtLink, Fact, Section, hostOf, initials } from './ui';
-import { downloadFile, shareOrDownloadVCard, toMarkdown } from '../lib/export';
+import {
+  associateToVCard,
+  downloadCalendarReminder,
+  downloadFile,
+  generateOutreachDrafts,
+  googleCalendarUrl,
+  shareOrDownloadVCard,
+  toMarkdown,
+} from '../lib/export';
+import { captureGeoLocation, mapsUrl } from '../lib/geo';
+import { uid } from '../lib/storage';
 
-type Tab = 'overview' | 'contact' | 'offerings' | 'customers' | 'social' | 'pitch' | 'sources';
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'overview', label: 'Overview' },
+const TABS: { id: DossierTab; label: string }[] = [
+  { id: 'overview', label: 'Company 360°' },
+  { id: 'notes', label: 'Notes & Team' },
   { id: 'contact', label: 'Contact' },
   { id: 'offerings', label: 'Offerings' },
   { id: 'customers', label: 'Customers' },
   { id: 'social', label: 'Social & News' },
-  { id: 'pitch', label: 'Pitch' },
+  { id: 'pitch', label: 'Pitch & Follow-Up' },
   { id: 'sources', label: 'Sources' },
+];
+
+const PRIORITIES: { id: LeadPriority; label: string; cls: string }[] = [
+  { id: 'hot', label: 'Hot Lead', cls: 'bg-rose-500/20 text-rose-300 border-rose-400/30' },
+  { id: 'warm', label: 'Warm', cls: 'bg-amber-500/20 text-amber-300 border-amber-400/30' },
+  { id: 'cold', label: 'Cold', cls: 'bg-sky-500/20 text-sky-300 border-sky-400/30' },
+  { id: 'partner', label: 'Partner', cls: 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30' },
 ];
 
 interface Props {
   record: ScanRecord;
+  initialTab?: DossierTab;
+  settings: Settings;
+  companyContacts: ScanRecord[];
+  recentEvents: string[];
   crmTargets: string[];
   onBack: () => void;
   onEdit: () => void;
   onRefresh: () => void;
+  onUpdateRecord: (patch: Partial<ScanRecord>) => void;
+  onSelectRecord: (r: ScanRecord) => void;
   onPushCrm: (provider: 'hubspot' | 'salesforce') => Promise<CrmResult>;
   onDelete: () => void;
 }
@@ -58,10 +82,59 @@ function ValidityDot({ status }: { status: string }) {
   return <span className={`ml-1.5 text-[10px] font-medium ${cls}`}>● {label}</span>;
 }
 
-export default function DossierView({ record, crmTargets, onBack, onEdit, onRefresh, onPushCrm, onDelete }: Props) {
-  const [tab, setTab] = useState<Tab>('overview');
+export default function DossierView({
+  record,
+  initialTab = 'overview',
+  settings,
+  companyContacts,
+  recentEvents,
+  crmTargets,
+  onBack,
+  onEdit,
+  onRefresh,
+  onUpdateRecord,
+  onSelectRecord,
+  onPushCrm,
+  onDelete,
+}: Props) {
+  const [tab, setTab] = useState<DossierTab>(initialTab);
   const [copied, setCopied] = useState<string | null>(null);
   const [crmOpen, setCrmOpen] = useState(false);
+
+  // Quick-add phone / email state
+  const [newPhone, setNewPhone] = useState('');
+  const [newPhoneType, setNewPhoneType] = useState('mobile');
+  const [newEmail, setNewEmail] = useState('');
+
+  // Add colleague / associated contact state
+  const [showAddColleague, setShowAddColleague] = useState(false);
+  const [colName, setColName] = useState('');
+  const [colRole, setColRole] = useState('');
+  const [colDept, setColDept] = useState('');
+  const [colEmail, setColEmail] = useState('');
+  const [colPhone, setColPhone] = useState('');
+  const [colLinkedin, setColLinkedin] = useState('');
+  const [colNotes, setColNotes] = useState('');
+
+  // Meeting note & voice dictation state
+  const [noteInput, setNoteInput] = useState('');
+  const [listening, setListening] = useState(false);
+  const [geoBusy, setGeoBusy] = useState(false);
+  const [tagInput, setTagInput] = useState('');
+
+  // Outreach generator state
+  const [outreachChannel, setOutreachChannel] = useState<'email' | 'linkedin' | 'whatsapp'>('email');
+  const drafts = generateOutreachDrafts(record, settings);
+  const [customDraft, setCustomDraft] = useState<string | null>(null);
+
+  useEffect(() => {
+    setTab(initialTab);
+  }, [initialTab, record.id]);
+
+  useEffect(() => {
+    setCustomDraft(null);
+  }, [outreachChannel, record.id, record.event, record.location?.label, record.meetingNotes?.length, record.associatedContacts?.length]);
+
   const { card, dossier: d } = record;
   const v: Validation | null | undefined = d?.validation;
 
@@ -75,16 +148,178 @@ export default function DossierView({ record, crmTargets, onBack, onEdit, onRefr
   const emailV = (e: string) => v?.emails.find((x) => x.value === e);
   const phoneV = (p: string) => v?.phones.find((x) => x.value === p);
 
+  // Handlers for adding details directly to card
+  const handleAddPhone = () => {
+    const num = newPhone.trim();
+    if (!num) return;
+    if (card.phones.some((p) => p.number === num)) {
+      setNewPhone('');
+      return;
+    }
+    const updatedCard = {
+      ...card,
+      phones: [...card.phones, { type: newPhoneType, number: num }],
+    };
+    onUpdateRecord({ card: updatedCard });
+    setNewPhone('');
+  };
+
+  const handleRemovePhone = (number: string) => {
+    onUpdateRecord({
+      card: { ...card, phones: card.phones.filter((p) => p.number !== number) },
+    });
+  };
+
+  const handleAddEmail = () => {
+    const em = newEmail.trim();
+    if (!em) return;
+    if (card.emails.includes(em)) {
+      setNewEmail('');
+      return;
+    }
+    const updatedCard = {
+      ...card,
+      emails: [...card.emails, em],
+    };
+    onUpdateRecord({ card: updatedCard });
+    setNewEmail('');
+  };
+
+  const handleRemoveEmail = (em: string) => {
+    onUpdateRecord({
+      card: { ...card, emails: card.emails.filter((e) => e !== em) },
+    });
+  };
+
+  // Handlers for Associated Contacts (colleagues met in the company)
+  const handleAddColleague = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!colName.trim()) return;
+    const next: AssociatedContact = {
+      id: uid(),
+      name: colName.trim(),
+      role: colRole.trim() || undefined,
+      department: colDept.trim() || undefined,
+      email: colEmail.trim() || undefined,
+      phone: colPhone.trim() || undefined,
+      linkedin: colLinkedin.trim() || undefined,
+      notes: colNotes.trim() || undefined,
+      createdAt: Date.now(),
+    };
+    onUpdateRecord({
+      associatedContacts: [next, ...(record.associatedContacts || [])],
+    });
+    setColName('');
+    setColRole('');
+    setColDept('');
+    setColEmail('');
+    setColPhone('');
+    setColLinkedin('');
+    setColNotes('');
+    setShowAddColleague(false);
+  };
+
+  const handleDeleteColleague = (id: string) => {
+    onUpdateRecord({
+      associatedContacts: (record.associatedContacts || []).filter((c) => c.id !== id),
+    });
+  };
+
+  // Handlers for Meeting Notes & Voice Dictation
+  const handleAddNote = () => {
+    const text = noteInput.trim();
+    if (!text) return;
+    onUpdateRecord({
+      meetingNotes: [{ id: uid(), text, createdAt: Date.now() }, ...(record.meetingNotes || [])],
+    });
+    setNoteInput('');
+  };
+
+  const handleDeleteNote = (id: string) => {
+    onUpdateRecord({
+      meetingNotes: (record.meetingNotes || []).filter((n) => n.id !== id),
+    });
+  };
+
+  const toggleDictation = () => {
+    const SpeechRec = (window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown }).SpeechRecognition ||
+      (window as unknown as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition;
+    if (!SpeechRec) {
+      alert('Voice dictation is not supported in this browser. Try Chrome or Edge.');
+      return;
+    }
+    if (listening) {
+      setListening(false);
+      return;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rec = new (SpeechRec as any)();
+    rec.lang = 'en-US';
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+    setListening(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rec.onresult = (ev: any) => {
+      const transcript = ev.results?.[0]?.[0]?.transcript;
+      if (transcript) {
+        setNoteInput((prev) => (prev ? `${prev} ${transcript}` : transcript));
+      }
+    };
+    rec.onerror = () => setListening(false);
+    rec.onend = () => setListening(false);
+    rec.start();
+  };
+
+  const handleCaptureGps = async () => {
+    setGeoBusy(true);
+    try {
+      const loc = await captureGeoLocation();
+      if (loc) onUpdateRecord({ location: loc });
+    } finally {
+      setGeoBusy(false);
+    }
+  };
+
+  const handleAddTag = () => {
+    const t = tagInput.trim();
+    if (!t) return;
+    const tags = Array.from(new Set([...(record.tags || []), t]));
+    onUpdateRecord({ tags });
+    setTagInput('');
+  };
+
+  const handleRemoveTag = (t: string) => {
+    onUpdateRecord({ tags: (record.tags || []).filter((x) => x !== t) });
+  };
+
+  const assocCount = (record.associatedContacts?.length || 0) + (record.meetingNotes?.length || 0);
+  const locHref = mapsUrl(record.location);
+  const currentDraftText =
+    customDraft !== null
+      ? customDraft
+      : outreachChannel === 'email'
+      ? drafts.emailBody
+      : outreachChannel === 'linkedin'
+      ? drafts.linkedinNote
+      : drafts.whatsappText;
+
   return (
     <div className="pb-6">
       {/* Header */}
       <div className="px-4 pt-2">
-        <button onClick={onBack} className="mb-3 flex items-center gap-1 text-sm text-slate-400">
-          <ArrowLeft className="h-4 w-4" /> Back
-        </button>
+        <div className="mb-3 flex items-center justify-between">
+          <button onClick={onBack} className="flex items-center gap-1 text-sm text-slate-400 hover:text-slate-200">
+            <ArrowLeft className="h-4 w-4" /> All Scanned Cards
+          </button>
+          <span className="text-xs text-slate-500">
+            Scanned {new Date(record.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+          </span>
+        </div>
 
         {record.demo && (
-          <div className="mb-3 rounded-xl border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">Demo data (fictional). Add a Gemini key in Settings for live results.</div>
+          <div className="mb-3 rounded-xl border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+            Demo data (fictional). Add a Gemini key in Settings for live results.
+          </div>
         )}
 
         <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-indigo-600/30 via-ink-800 to-fuchsia-600/20 p-5">
@@ -102,10 +337,82 @@ export default function DossierView({ record, crmTargets, onBack, onEdit, onRefr
             </div>
             {d?.company.logo && <img src={d.company.logo} alt="" className="h-10 w-10 shrink-0 rounded-lg bg-white object-contain p-1" />}
           </div>
-          {d?.company.industry && <div className="mt-3"><Chips items={[d.company.industry, d.company.businessModel, d.company.headquarters].filter(Boolean) as string[]} tone="indigo" /></div>}
+
+          {/* Event, GPS Location & Priority Context Pills */}
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs">
+            {record.event ? (
+              <button
+                onClick={() => setTab('notes')}
+                className="inline-flex items-center gap-1 rounded-full border border-indigo-400/30 bg-indigo-500/20 px-2.5 py-1 text-indigo-200"
+              >
+                <Calendar className="h-3 w-3" /> {record.event}
+              </button>
+            ) : (
+              <button
+                onClick={() => setTab('notes')}
+                className="inline-flex items-center gap-1 rounded-full border border-dashed border-white/15 bg-white/5 px-2.5 py-1 text-slate-400 hover:text-slate-200"
+              >
+                <Calendar className="h-3 w-3" /> + Add Event
+              </button>
+            )}
+
+            {record.location?.label ? (
+              <a
+                href={locHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-500/15 px-2.5 py-1 text-emerald-200"
+                title="Open scan GPS location in Google Maps"
+              >
+                <MapPin className="h-3 w-3" /> {record.location.label}
+              </a>
+            ) : (
+              <button
+                onClick={handleCaptureGps}
+                disabled={geoBusy}
+                className="inline-flex items-center gap-1 rounded-full border border-dashed border-white/15 bg-white/5 px-2.5 py-1 text-slate-400 hover:text-slate-200"
+              >
+                {geoBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <LocateFixed className="h-3 w-3" />} + Tag GPS Location
+              </button>
+            )}
+
+            <button
+              onClick={() => setTab('notes')}
+              className="inline-flex items-center gap-1 rounded-full border border-fuchsia-400/30 bg-fuchsia-500/15 px-2.5 py-1 text-fuchsia-200"
+            >
+              <UserPlus className="h-3 w-3" /> + Add Colleague / Phone / Note
+            </button>
+          </div>
+
+          {/* Priority selector bar */}
+          <div className="mt-3 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            <span className="text-[11px] text-slate-400 mr-1 flex items-center gap-1">
+              <Flame className="h-3 w-3 text-amber-400" /> Priority:
+            </span>
+            {PRIORITIES.map((p) => {
+              const active = record.priority === p.id;
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => onUpdateRecord({ priority: active ? null : p.id })}
+                  className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition ${
+                    active ? p.cls : 'border-white/10 bg-white/5 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {d?.company.industry && (
+            <div className="mt-3">
+              <Chips items={[d.company.industry, d.company.businessModel, d.company.headquarters].filter(Boolean) as string[]} tone="indigo" />
+            </div>
+          )}
 
           <div className="mt-4 grid grid-cols-4 gap-2">
-            <ActionBtn icon={<UserPlus className="h-5 w-5" />} label="Save" onClick={() => shareOrDownloadVCard(card, d)} primary />
+            <ActionBtn icon={<UserPlus className="h-5 w-5" />} label="Save vCard" onClick={() => shareOrDownloadVCard(card, d, record)} primary />
             <ActionBtn icon={<Phone className="h-5 w-5" />} label="Call" href={card.phones[0] ? `tel:${(phoneV(card.phones[0].number)?.e164 || card.phones[0].number).replace(/[^\d+]/g, '')}` : undefined} />
             <ActionBtn icon={<Mail className="h-5 w-5" />} label="Email" href={card.emails[0] ? `mailto:${card.emails[0]}` : undefined} />
             <ActionBtn icon={<Send className="h-5 w-5" />} label="CRM" onClick={() => setCrmOpen(true)} />
@@ -125,16 +432,476 @@ export default function DossierView({ record, crmTargets, onBack, onEdit, onRefr
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm transition ${tab === t.id ? 'bg-indigo-500 text-white' : 'bg-white/5 text-slate-400'}`}
+            className={`shrink-0 flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm transition ${
+              tab === t.id ? 'bg-indigo-500 text-white' : 'bg-white/5 text-slate-400'
+            }`}
           >
             {t.label}
+            {t.id === 'notes' && assocCount > 0 && (
+              <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-semibold ${tab === t.id ? 'bg-white/20 text-white' : 'bg-indigo-500/20 text-indigo-300'}`}>
+                {assocCount}
+              </span>
+            )}
           </button>
         ))}
       </div>
 
       <div className="space-y-3 px-4 pt-2">
-        {!d && <p className="text-sm text-slate-400">No enrichment data yet. Tap Edit & re-enrich.</p>}
+        {/* ============================================================ NOTES & TEAM TAB */}
+        {tab === 'notes' && (
+          <>
+            {/* 1. Other People Met at Company */}
+            <Section
+              title={`People Spoken To at ${companyName} (${(record.associatedContacts || []).length})`}
+              icon={<Users className="h-4 w-4 text-indigo-300" />}
+              action={
+                <button
+                  onClick={() => setShowAddColleague(!showAddColleague)}
+                  className="flex items-center gap-1 rounded-lg bg-indigo-500/20 px-2.5 py-1 text-xs font-medium text-indigo-200 hover:bg-indigo-500/30"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add Person
+                </button>
+              }
+            >
+              <p className="mb-3 text-xs text-slate-400">
+                Spoke to another colleague, booth rep, or decision-maker at <b>{companyName}</b>? Add their name, number, or email here so everything stays linked to this company.
+              </p>
 
+              {showAddColleague && (
+                <form onSubmit={handleAddColleague} className="mb-4 space-y-2.5 rounded-2xl border border-indigo-400/30 bg-ink-900/90 p-3.5">
+                  <div className="text-xs font-semibold text-indigo-300">Add Colleague / Company Contact</div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <input
+                      required
+                      value={colName}
+                      onChange={(e) => setColName(e.target.value)}
+                      placeholder="Full name *"
+                      className="rounded-xl border border-white/10 bg-ink-800 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+                    />
+                    <input
+                      value={colRole}
+                      onChange={(e) => setColRole(e.target.value)}
+                      placeholder="Job title / Role (e.g. VP Sales)"
+                      className="rounded-xl border border-white/10 bg-ink-800 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+                    />
+                    <input
+                      value={colPhone}
+                      onChange={(e) => setColPhone(e.target.value)}
+                      placeholder="Phone / WhatsApp number"
+                      className="rounded-xl border border-white/10 bg-ink-800 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+                    />
+                    <input
+                      type="email"
+                      value={colEmail}
+                      onChange={(e) => setColEmail(e.target.value)}
+                      placeholder="Email address"
+                      className="rounded-xl border border-white/10 bg-ink-800 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+                    />
+                    <input
+                      value={colDept}
+                      onChange={(e) => setColDept(e.target.value)}
+                      placeholder="Department (optional)"
+                      className="rounded-xl border border-white/10 bg-ink-800 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+                    />
+                    <input
+                      value={colLinkedin}
+                      onChange={(e) => setColLinkedin(e.target.value)}
+                      placeholder="LinkedIn URL (optional)"
+                      className="rounded-xl border border-white/10 bg-ink-800 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+                    />
+                  </div>
+                  <textarea
+                    rows={2}
+                    value={colNotes}
+                    onChange={(e) => setColNotes(e.target.value)}
+                    placeholder="What did you discuss with them?"
+                    className="w-full rounded-xl border border-white/10 bg-ink-800 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+                  />
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddColleague(false)}
+                      className="rounded-xl bg-white/5 px-3 py-1.5 text-xs text-slate-300"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="rounded-xl bg-indigo-500 px-4 py-1.5 text-xs font-semibold text-white"
+                    >
+                      Save Contact
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {(record.associatedContacts || []).length > 0 ? (
+                <div className="space-y-2">
+                  {(record.associatedContacts || []).map((c) => (
+                    <div key={c.id} className="rounded-xl border border-white/5 bg-white/[0.03] p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="font-medium text-slate-100">{c.name}</div>
+                          {(c.role || c.department) && (
+                            <div className="text-xs text-indigo-300">
+                              {[c.role, c.department].filter(Boolean).join(' · ')}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {c.phone && (
+                            <a
+                              href={`tel:${c.phone.replace(/[^\d+]/g, '')}`}
+                              className="rounded-lg bg-white/5 p-1.5 text-slate-300 hover:bg-white/10"
+                              title="Call"
+                            >
+                              <Phone className="h-3.5 w-3.5" />
+                            </a>
+                          )}
+                          {c.email && (
+                            <a
+                              href={`mailto:${c.email}`}
+                              className="rounded-lg bg-white/5 p-1.5 text-slate-300 hover:bg-white/10"
+                              title="Email"
+                            >
+                              <Mail className="h-3.5 w-3.5" />
+                            </a>
+                          )}
+                          <button
+                            onClick={() =>
+                              downloadFile(
+                                `${c.name.replace(/\W+/g, '_')}.vcf`,
+                                associateToVCard(c, companyName, card.website),
+                                'text/vcard',
+                              )
+                            }
+                            className="rounded-lg bg-white/5 p-1.5 text-slate-300 hover:bg-white/10"
+                            title="Save vCard"
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteColleague(c.id)}
+                            className="rounded-lg bg-white/5 p-1.5 text-rose-300 hover:bg-rose-500/20"
+                            title="Remove"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
+                        {c.phone && <span>📞 {c.phone}</span>}
+                        {c.email && <span>✉️ {c.email}</span>}
+                        {c.linkedin && (
+                          <ExtLink href={c.linkedin} className="text-xs">
+                            LinkedIn
+                          </ExtLink>
+                        )}
+                      </div>
+                      {c.notes && <p className="mt-2 rounded-lg bg-black/20 p-2 text-xs text-slate-300">{c.notes}</p>}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                !showAddColleague && (
+                  <button
+                    onClick={() => setShowAddColleague(true)}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-white/15 py-3 text-xs text-slate-400 hover:border-indigo-400/40 hover:text-indigo-200"
+                  >
+                    <UserPlus className="h-4 w-4" /> + Add another person you talked to at {companyName}
+                  </button>
+                )
+              )}
+
+              {/* Other scanned business cards from the same company */}
+              {companyContacts.length > 0 && (
+                <div className="mt-4 border-t border-white/10 pt-3">
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    Other Scanned Cards at {companyName} ({companyContacts.length})
+                  </div>
+                  <div className="space-y-1.5">
+                    {companyContacts.map((other) => (
+                      <button
+                        key={other.id}
+                        onClick={() => onSelectRecord(other)}
+                        className="flex w-full items-center justify-between rounded-xl bg-white/[0.04] px-3 py-2 text-left text-xs transition hover:bg-white/10"
+                      >
+                        <div>
+                          <div className="font-medium text-slate-200">{other.card.fullName || 'Contact'}</div>
+                          <div className="text-slate-400">{other.card.jobTitle || '—'}</div>
+                        </div>
+                        <span className="text-indigo-300">Open card →</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </Section>
+
+            {/* 2. Quick Add Phone Number or Email to This Card */}
+            <Section title={`Add Extra Phone / Email for ${card.fullName || 'This Contact'}`} icon={<Phone className="h-4 w-4 text-indigo-300" />}>
+              <div className="space-y-3">
+                {/* Existing phones & emails with delete button */}
+                <div className="space-y-1.5 text-xs">
+                  {card.phones.map((p) => (
+                    <div key={p.number} className="flex items-center justify-between rounded-lg bg-white/[0.03] px-3 py-1.5">
+                      <span className="text-slate-200">
+                        📞 {p.number} <span className="text-slate-500">({p.type})</span>
+                      </span>
+                      <button onClick={() => handleRemovePhone(p.number)} className="text-slate-500 hover:text-rose-300">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  {card.emails.map((em) => (
+                    <div key={em} className="flex items-center justify-between rounded-lg bg-white/[0.03] px-3 py-1.5">
+                      <span className="text-slate-200">✉️ {em}</span>
+                      <button onClick={() => handleRemoveEmail(em)} className="text-slate-500 hover:text-rose-300">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Add Phone */}
+                <div className="flex gap-1.5">
+                  <select
+                    value={newPhoneType}
+                    onChange={(e) => setNewPhoneType(e.target.value)}
+                    className="rounded-xl border border-white/10 bg-ink-900 px-2.5 py-2 text-xs text-slate-300 outline-none"
+                  >
+                    <option value="mobile">Mobile</option>
+                    <option value="work">Work</option>
+                    <option value="other">Direct / WhatsApp</option>
+                  </select>
+                  <input
+                    value={newPhone}
+                    onChange={(e) => setNewPhone(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddPhone()}
+                    placeholder="Add another phone number…"
+                    className="min-w-0 flex-1 rounded-xl border border-white/10 bg-ink-900 px-3 py-2 text-xs outline-none focus:border-indigo-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddPhone}
+                    className="rounded-xl bg-indigo-500 px-3 py-2 text-xs font-medium text-white"
+                  >
+                    + Phone
+                  </button>
+                </div>
+
+                {/* Add Email */}
+                <div className="flex gap-1.5">
+                  <input
+                    type="email"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddEmail()}
+                    placeholder="Add another email ID…"
+                    className="min-w-0 flex-1 rounded-xl border border-white/10 bg-ink-900 px-3 py-2 text-xs outline-none focus:border-indigo-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddEmail}
+                    className="rounded-xl bg-indigo-500 px-3 py-2 text-xs font-medium text-white"
+                  >
+                    + Email
+                  </button>
+                </div>
+              </div>
+            </Section>
+
+            {/* 3. Meeting Notes + Voice Dictation */}
+            <Section title={`Meeting Notes (${(record.meetingNotes || []).length})`} icon={<StickyNote className="h-4 w-4 text-amber-300" />}>
+              <div className="space-y-2.5">
+                <div className="flex gap-1.5">
+                  <textarea
+                    rows={2}
+                    value={noteInput}
+                    onChange={(e) => setNoteInput(e.target.value)}
+                    placeholder="Jot down conversation highlights, requirements, pricing discussed, or next steps…"
+                    className="min-w-0 flex-1 rounded-xl border border-white/10 bg-ink-900 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+                  />
+                  <div className="flex flex-col gap-1.5">
+                    <button
+                      type="button"
+                      onClick={toggleDictation}
+                      title="Voice-to-text dictation"
+                      className={`flex items-center justify-center rounded-xl p-2.5 transition ${
+                        listening ? 'animate-pulse bg-rose-500 text-white' : 'bg-white/5 text-slate-300 hover:bg-white/10'
+                      }`}
+                    >
+                      {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleAddNote}
+                      disabled={!noteInput.trim()}
+                      className="flex flex-1 items-center justify-center rounded-xl bg-indigo-500 px-3 text-xs font-semibold text-white disabled:opacity-40"
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
+
+                {(record.meetingNotes || []).length > 0 ? (
+                  <ul className="space-y-2 pt-1">
+                    {(record.meetingNotes || []).map((n) => (
+                      <li key={n.id} className="flex items-start justify-between gap-2 rounded-xl bg-white/[0.03] p-3 text-sm">
+                        <div>
+                          <p className="whitespace-pre-wrap text-slate-200">{n.text}</p>
+                          <span className="mt-1 block text-[10px] text-slate-500">
+                            {new Date(n.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+                        <button onClick={() => handleDeleteNote(n.id)} className="shrink-0 text-slate-500 hover:text-rose-300">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-slate-500">No meeting notes yet.</p>
+                )}
+              </div>
+            </Section>
+
+            {/* 4. Event, GPS Location, Tags & Follow-Up Reminder */}
+            <Section title="Event, GPS Location & Follow-Up Reminder" icon={<Calendar className="h-4 w-4 text-emerald-300" />}>
+              <div className="space-y-3 text-xs">
+                <div>
+                  <label className="mb-1 block text-slate-400">Event / Trade Show / Conference</label>
+                  <input
+                    value={record.event || ''}
+                    onChange={(e) => onUpdateRecord({ event: e.target.value || null })}
+                    placeholder="e.g. SaaStr Annual 2026, Client Dinner, Booth #412"
+                    className="w-full rounded-xl border border-white/10 bg-ink-900 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+                  />
+                  {recentEvents.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {recentEvents.slice(0, 5).map((ev) => (
+                        <button
+                          key={ev}
+                          type="button"
+                          onClick={() => onUpdateRecord({ event: ev })}
+                          className={`rounded-full px-2 py-0.5 text-[11px] ${
+                            record.event === ev ? 'bg-indigo-500 text-white' : 'bg-white/5 text-slate-400'
+                          }`}
+                        >
+                          {ev}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-slate-400">Scan Location (GPS)</label>
+                  <div className="flex gap-1.5">
+                    <input
+                      value={record.location?.label || ''}
+                      onChange={(e) =>
+                        onUpdateRecord({
+                          location: { ...(record.location || {}), label: e.target.value, capturedAt: record.location?.capturedAt || Date.now() },
+                        })
+                      }
+                      placeholder="City, Venue, or Address"
+                      className="min-w-0 flex-1 rounded-xl border border-white/10 bg-ink-900 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleCaptureGps}
+                      disabled={geoBusy}
+                      className="flex shrink-0 items-center gap-1 rounded-xl bg-emerald-500/15 px-3 py-2 font-medium text-emerald-300"
+                    >
+                      {geoBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LocateFixed className="h-3.5 w-3.5" />}
+                      Use GPS
+                    </button>
+                    {locHref && (
+                      <a
+                        href={locHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex shrink-0 items-center gap-1 rounded-xl bg-white/5 px-3 py-2 text-slate-300"
+                        title="View on Google Maps"
+                      >
+                        <MapPin className="h-3.5 w-3.5 text-emerald-400" /> Map
+                      </a>
+                    )}
+                  </div>
+                  {record.location?.lat && record.location?.lng && (
+                    <div className="mt-1 text-[10px] text-slate-500">
+                      GPS coordinates: {record.location.lat}, {record.location.lng}
+                    </div>
+                  )}
+                </div>
+
+                {/* Follow-Up Reminder Date + Calendar Export */}
+                <div>
+                  <label className="mb-1 flex items-center gap-1 text-slate-400">
+                    <Bell className="h-3.5 w-3.5 text-amber-300" /> Follow-Up Reminder Date
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    <input
+                      type="date"
+                      value={record.followUpDate || ''}
+                      onChange={(e) => onUpdateRecord({ followUpDate: e.target.value || null })}
+                      className="rounded-xl border border-white/10 bg-ink-900 px-3 py-2 text-sm text-slate-200 outline-none focus:border-indigo-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => downloadCalendarReminder(record)}
+                      className="flex items-center gap-1.5 rounded-xl bg-indigo-500/20 px-3 py-2 text-xs font-medium text-indigo-200 hover:bg-indigo-500/30"
+                    >
+                      <Calendar className="h-3.5 w-3.5" /> Download .ics
+                    </button>
+                    <a
+                      href={googleCalendarUrl(record)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 rounded-xl bg-white/5 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-white/10"
+                    >
+                      Google Calendar <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </div>
+                </div>
+
+                {/* Custom Tags */}
+                <div>
+                  <label className="mb-1 block text-slate-400">Tags</label>
+                  <div className="flex gap-1.5">
+                    <input
+                      value={tagInput}
+                      onChange={(e) => setTagInput(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleAddTag()}
+                      placeholder="Add tag (e.g. Q3-Pipeline, Distributor, VIP)…"
+                      className="min-w-0 flex-1 rounded-xl border border-white/10 bg-ink-900 px-3 py-2 text-xs outline-none focus:border-indigo-400"
+                    />
+                    <button type="button" onClick={handleAddTag} className="rounded-xl bg-white/10 px-3 py-2 text-xs text-slate-200">
+                      + Tag
+                    </button>
+                  </div>
+                  {!!record.tags?.length && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {record.tags.map((t) => (
+                        <span key={t} className="inline-flex items-center gap-1 rounded-full bg-indigo-500/15 px-2.5 py-0.5 text-xs text-indigo-200">
+                          #{t}
+                          <button onClick={() => handleRemoveTag(t)} className="text-indigo-300/70 hover:text-white">
+                            <X className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </Section>
+          </>
+        )}
+
+        {!d && tab !== 'notes' && <p className="text-sm text-slate-400">No enrichment data yet. Tap Edit & re-enrich.</p>}
+
+        {/* ============================================================ OVERVIEW TAB */}
         {d && tab === 'overview' && (
           <>
             <Section title="What they do" icon={<Sparkles className="h-4 w-4 text-indigo-300" />}>
@@ -229,12 +996,22 @@ export default function DossierView({ record, crmTargets, onBack, onEdit, onRefr
           </>
         )}
 
+        {/* ============================================================ CONTACT TAB */}
         {tab === 'contact' && (
           <>
             <Section
               title="Card details"
               icon={<Briefcase className="h-4 w-4 text-indigo-300" />}
-              action={<button onClick={onEdit} className="flex items-center gap-1 text-xs text-indigo-300"><Pencil className="h-3.5 w-3.5" /> Edit & re-enrich</button>}
+              action={
+                <div className="flex items-center gap-3">
+                  <button onClick={() => setTab('notes')} className="flex items-center gap-1 text-xs text-emerald-300">
+                    <Plus className="h-3.5 w-3.5" /> Add phone / colleague
+                  </button>
+                  <button onClick={onEdit} className="flex items-center gap-1 text-xs text-indigo-300">
+                    <Pencil className="h-3.5 w-3.5" /> Edit & re-enrich
+                  </button>
+                </div>
+              }
             >
               <div className="space-y-2.5 text-sm">
                 {card.emails.map((e) => {
@@ -326,6 +1103,7 @@ export default function DossierView({ record, crmTargets, onBack, onEdit, onRefr
           </>
         )}
 
+        {/* ============================================================ OFFERINGS TAB */}
         {d && tab === 'offerings' && (
           <>
             <Section title={`Products (${d.products.length})`} icon={<Package className="h-4 w-4 text-indigo-300" />}>
@@ -358,6 +1136,7 @@ export default function DossierView({ record, crmTargets, onBack, onEdit, onRefr
           </>
         )}
 
+        {/* ============================================================ CUSTOMERS TAB */}
         {d && tab === 'customers' && (
           <>
             <Section title="Ideal customer profile" icon={<Target className="h-4 w-4 text-indigo-300" />}>
@@ -390,6 +1169,7 @@ export default function DossierView({ record, crmTargets, onBack, onEdit, onRefr
           </>
         )}
 
+        {/* ============================================================ SOCIAL & NEWS TAB */}
         {d && tab === 'social' && (
           <>
             <Section title="Social presence" icon={<Globe className="h-4 w-4 text-indigo-300" />}>
@@ -426,26 +1206,101 @@ export default function DossierView({ record, crmTargets, onBack, onEdit, onRefr
           </>
         )}
 
-        {d && tab === 'pitch' && (
+        {/* ============================================================ PITCH & FOLLOW-UP TAB */}
+        {tab === 'pitch' && (
           <>
-            <Section title="Sales angle" icon={<Target className="h-4 w-4 text-indigo-300" />}>
-              <p className="text-sm leading-relaxed text-slate-200">{d.salesAngle || '—'}</p>
-            </Section>
-            <Section title="Talking points" icon={<MessageSquare className="h-4 w-4 text-indigo-300" />}>
-              <ul className="space-y-2">
-                {d.talkingPoints.map((t, i) => (
-                  <li key={i} className="flex items-start gap-2 rounded-xl bg-white/[0.03] p-3 text-sm">
-                    <span className="flex-1 text-slate-200">{t}</span>
-                    <button onClick={() => copy(t, `tp${i}`)} className="shrink-0 text-slate-500" aria-label="Copy">
-                      {copied === `tp${i}` ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
-                    </button>
-                  </li>
+            {/* 1-Tap Personalized Follow-Up Composer */}
+            <Section title="1-Tap Follow-Up & Outreach Generator" icon={<Share2 className="h-4 w-4 text-indigo-300" />}>
+              <p className="mb-2.5 text-xs text-slate-400">
+                Auto-crafted using your scan event{record.event ? ` (${record.event})` : ''}, location{record.location?.label ? ` (${record.location.label})` : ''}, colleagues met, notes, and company intelligence.
+              </p>
+
+              <div className="mb-3 flex gap-1.5">
+                {([
+                  ['email', 'Email'],
+                  ['linkedin', 'LinkedIn Note'],
+                  ['whatsapp', 'WhatsApp / SMS'],
+                ] as const).map(([id, label]) => (
+                  <button
+                    key={id}
+                    onClick={() => setOutreachChannel(id)}
+                    className={`rounded-xl px-3 py-1.5 text-xs font-medium transition ${
+                      outreachChannel === id ? 'bg-indigo-500 text-white' : 'bg-white/5 text-slate-400'
+                    }`}
+                  >
+                    {label}
+                  </button>
                 ))}
-              </ul>
+              </div>
+
+              {outreachChannel === 'email' && (
+                <div className="mb-2 rounded-xl bg-ink-900 px-3 py-2 text-xs text-slate-300">
+                  <span className="text-slate-500">Subject: </span>
+                  {drafts.emailSubject}
+                </div>
+              )}
+
+              <textarea
+                rows={outreachChannel === 'email' ? 7 : 4}
+                value={currentDraftText}
+                onChange={(e) => setCustomDraft(e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-ink-900 p-3 text-xs leading-relaxed text-slate-200 outline-none focus:border-indigo-400"
+              />
+
+              <div className="mt-2.5 flex flex-wrap gap-2">
+                <button
+                  onClick={() => copy(currentDraftText, 'outreach')}
+                  className="flex items-center gap-1.5 rounded-xl bg-indigo-500 px-3.5 py-2 text-xs font-semibold text-white"
+                >
+                  {copied === 'outreach' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  {copied === 'outreach' ? 'Copied!' : 'Copy Message'}
+                </button>
+
+                {outreachChannel === 'email' && card.emails[0] && (
+                  <a
+                    href={`mailto:${card.emails[0]}?subject=${encodeURIComponent(drafts.emailSubject)}&body=${encodeURIComponent(currentDraftText)}`}
+                    className="flex items-center gap-1.5 rounded-xl bg-white/10 px-3.5 py-2 text-xs font-medium text-slate-200"
+                  >
+                    <Mail className="h-3.5 w-3.5" /> Open in Email App
+                  </a>
+                )}
+
+                {outreachChannel === 'whatsapp' && (
+                  <a
+                    href={`https://wa.me/${card.phones[0] ? (phoneV(card.phones[0].number)?.e164 || card.phones[0].number).replace(/[^\d]/g, '') : ''}?text=${encodeURIComponent(currentDraftText)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 rounded-xl bg-emerald-500/20 px-3.5 py-2 text-xs font-medium text-emerald-200"
+                  >
+                    <MessageSquare className="h-3.5 w-3.5" /> Send via WhatsApp
+                  </a>
+                )}
+              </div>
             </Section>
+
+            {d && (
+              <>
+                <Section title="Sales angle" icon={<Target className="h-4 w-4 text-indigo-300" />}>
+                  <p className="text-sm leading-relaxed text-slate-200">{d.salesAngle || '—'}</p>
+                </Section>
+                <Section title="Talking points" icon={<MessageSquare className="h-4 w-4 text-indigo-300" />}>
+                  <ul className="space-y-2">
+                    {d.talkingPoints.map((t, i) => (
+                      <li key={i} className="flex items-start gap-2 rounded-xl bg-white/[0.03] p-3 text-sm">
+                        <span className="flex-1 text-slate-200">{t}</span>
+                        <button onClick={() => copy(t, `tp${i}`)} className="shrink-0 text-slate-500" aria-label="Copy">
+                          {copied === `tp${i}` ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </Section>
+              </>
+            )}
           </>
         )}
 
+        {/* ============================================================ SOURCES TAB */}
         {d && tab === 'sources' && (
           <>
             {!!d.caveats.length && (
@@ -481,7 +1336,7 @@ export default function DossierView({ record, crmTargets, onBack, onEdit, onRefr
         {/* Export bar */}
         <div className="grid grid-cols-3 gap-2 pt-2">
           <SmallBtn icon={copied === 'md' ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />} label="Copy brief" onClick={() => copy(toMarkdown(record), 'md')} />
-          <SmallBtn icon={<Download className="h-4 w-4" />} label="vCard" onClick={() => shareOrDownloadVCard(card, d)} />
+          <SmallBtn icon={<Download className="h-4 w-4" />} label="vCard" onClick={() => shareOrDownloadVCard(card, d, record)} />
           <SmallBtn icon={<FileDown className="h-4 w-4" />} label="JSON" onClick={() => downloadFile(`${(card.fullName || 'dossier').replace(/\W+/g, '_')}.json`, JSON.stringify(record, null, 2), 'application/json')} />
           <SmallBtn icon={<Send className="h-4 w-4" />} label="Send to CRM" onClick={() => setCrmOpen(true)} />
           <SmallBtn icon={<RefreshCw className="h-4 w-4" />} label="Refresh data" onClick={onRefresh} />

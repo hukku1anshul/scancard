@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScanLine, History as HistoryIcon, Settings as SettingsIcon, Sparkles, CheckCircle2 } from 'lucide-react';
-import ScanView from './components/ScanView';
+import ScanView, { type ScanContextInput } from './components/ScanView';
 import ProgressView from './components/ProgressView';
 import DossierView from './components/DossierView';
 import EditCardSheet from './components/EditCardSheet';
@@ -8,9 +8,9 @@ import HistoryView from './components/HistoryView';
 import SettingsView from './components/SettingsView';
 import ShareTargetSheet, { type SharedLink } from './components/ShareTargetSheet';
 import { fetchHealth, pushToCrm, streamScan, type ScanPayload } from './lib/api';
-import { prepareImage, type PreparedImage } from './lib/image';
+import { prepareImage } from './lib/image';
 import { loadHistory, loadSettings, saveHistory, saveSettings, uid } from './lib/storage';
-import type { Card, Health, ScanRecord, Settings, StepId, StepState } from './types';
+import type { Card, DossierTab, Health, MeetingNote, ScanLocation, ScanRecord, Settings, StepId, StepState } from './types';
 
 type View = 'scan' | 'processing' | 'dossier' | 'history' | 'settings';
 
@@ -42,12 +42,19 @@ function parseShareTarget(): SharedLink | null {
   return { url, kind, title: p.get('title') || '' };
 }
 
+interface JobMeta {
+  event?: string | null;
+  location?: ScanLocation | null;
+  initialNotes?: MeetingNote[];
+}
+
 export default function App() {
   const [view, setView] = useState<View>('scan');
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const [history, setHistory] = useState<ScanRecord[]>(loadHistory);
   const [health, setHealth] = useState<Health | null>(null);
   const [currentId, setCurrentId] = useState<string | null>(null);
+  const [dossierTab, setDossierTab] = useState<DossierTab>('overview');
   const [editing, setEditing] = useState(false);
   const [shared, setShared] = useState<SharedLink | null>(parseShareTarget);
   const [toast, setToast] = useState<string | null>(null);
@@ -58,13 +65,33 @@ export default function App() {
   const [scanThumb, setScanThumb] = useState<string | undefined>();
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const lastJob = useRef<{ payload: ScanPayload; thumb?: string; id?: string } | null>(null);
+  const lastJob = useRef<{ payload: ScanPayload; thumb?: string; id?: string; meta?: JobMeta } | null>(null);
 
   // background (event mode) queue
   const pending = useRef(new Map<string, ScanPayload>());
   const workerBusy = useRef(false);
 
   const current = history.find((r) => r.id === currentId) || null;
+
+  const recentEvents = useMemo(() => {
+    const s = new Set<string>();
+    if (settings.defaultEvent?.trim()) s.add(settings.defaultEvent.trim());
+    history.forEach((r) => {
+      if (r.event?.trim()) s.add(r.event.trim());
+    });
+    return Array.from(s);
+  }, [history, settings.defaultEvent]);
+
+  const companyContacts = useMemo(() => {
+    if (!current) return [];
+    const curCo = (current.card.domain || current.dossier?.company.name || current.card.company || '').toLowerCase().trim();
+    if (!curCo) return [];
+    return history.filter((r) => {
+      if (r.id === current.id) return false;
+      const co = (r.card.domain || r.dossier?.company.name || r.card.company || '').toLowerCase().trim();
+      return co === curCo;
+    });
+  }, [current, history]);
 
   useEffect(() => saveHistory(history), [history]);
   useEffect(() => {
@@ -83,8 +110,8 @@ export default function App() {
 
   // ---------------------------------------------------------------- foreground
   const runJob = useCallback(
-    async (payload: ScanPayload, thumb?: string, existingId?: string) => {
-      lastJob.current = { payload, thumb, id: existingId };
+    async (payload: ScanPayload, thumb?: string, existingId?: string, meta?: JobMeta) => {
+      lastJob.current = { payload, thumb, id: existingId, meta };
       abortRef.current?.abort();
       const ctrl = new AbortController();
       abortRef.current = ctrl;
@@ -113,9 +140,30 @@ export default function App() {
               setSteps((prev) => prev.map((s) => (s.status === 'running' ? { ...s, status: 'error' } : s)));
             } else if (evt.type === 'result' && card) {
               finished = true;
-              const record: ScanRecord = { id: existingId || uid(), createdAt: Date.now(), thumb, card, dossier: evt.dossier, demo: evt.demo, status: 'done' };
-              setHistory((h) => [record, ...h.filter((r) => r.id !== record.id)]);
-              setCurrentId(record.id);
+              const finalCard = card;
+              const recId = existingId || uid();
+              setHistory((h) => {
+                const prev = existingId ? h.find((r) => r.id === existingId) : undefined;
+                const record: ScanRecord = {
+                  id: recId,
+                  createdAt: prev?.createdAt || Date.now(),
+                  thumb: thumb ?? prev?.thumb,
+                  card: finalCard,
+                  dossier: evt.dossier,
+                  demo: evt.demo,
+                  status: 'done',
+                  event: prev?.event ?? meta?.event ?? null,
+                  location: prev?.location ?? meta?.location ?? null,
+                  priority: prev?.priority ?? null,
+                  tags: prev?.tags ?? [],
+                  followUpDate: prev?.followUpDate ?? null,
+                  associatedContacts: prev?.associatedContacts ?? [],
+                  meetingNotes: prev?.meetingNotes ?? meta?.initialNotes ?? [],
+                };
+                return [record, ...h.filter((r) => r.id !== record.id)];
+              });
+              setCurrentId(recId);
+              setDossierTab('overview');
               setView('dossier');
             }
           },
@@ -165,17 +213,32 @@ export default function App() {
   const queueCount = history.filter((r) => r.status === 'queued' || r.status === 'processing').length;
 
   // ---------------------------------------------------------------- handlers
-  const onScanImages = async (images: PreparedImage[]) => {
+  const onScanImages = async ({ images, event, location, initialNote }: ScanContextInput) => {
     const thumb = (await prepareImage(images[0].dataUrl, 480, 0.7)).dataUrl;
     const payload: ScanPayload = { images: images.map(({ data, mimeType }) => ({ data, mimeType })) };
+    const initialNotes: MeetingNote[] = initialNote ? [{ id: uid(), text: initialNote, createdAt: Date.now() }] : [];
     if (settings.eventMode) {
       const id = uid();
       pending.current.set(id, payload);
-      setHistory((h) => [{ id, createdAt: Date.now(), thumb, card: emptyCard(), status: 'queued' }, ...h]);
+      setHistory((h) => [
+        {
+          id,
+          createdAt: Date.now(),
+          thumb,
+          card: emptyCard(),
+          status: 'queued',
+          event: event || null,
+          location: location || null,
+          meetingNotes: initialNotes,
+          associatedContacts: [],
+          tags: [],
+        },
+        ...h,
+      ]);
       setToast(`Card queued (${queueCount + 1} in progress). Keep scanning!`);
       return;
     }
-    runJob(payload, thumb);
+    runJob(payload, thumb, undefined, { event, location, initialNotes });
   };
 
   const retryQueued = (id: string) => {
@@ -213,8 +276,8 @@ export default function App() {
   const title: Record<View, string> = {
     scan: settings.eventMode ? 'Event mode — rapid scanning' : 'Scan a card',
     processing: 'Analyzing…',
-    dossier: 'Intelligence dossier',
-    history: 'Scanned contacts',
+    dossier: '360° Company & Contact Dossier',
+    history: 'Scanned cards & events history',
     settings: 'Settings',
   };
 
@@ -242,7 +305,11 @@ export default function App() {
             demoMode={demoMode}
             eventMode={settings.eventMode}
             queueCount={queueCount}
+            defaultEvent={settings.defaultEvent}
+            autoGeo={settings.autoGeo}
+            recentEvents={recentEvents}
             onToggleEventMode={() => updateSettings({ ...settings, eventMode: !settings.eventMode })}
+            onChangeDefaultEvent={(defaultEvent) => updateSettings({ ...settings, defaultEvent })}
             onScan={onScanImages}
             onOpenSettings={() => setView('settings')}
             onOpenQueue={() => setView('history')}
@@ -255,16 +322,26 @@ export default function App() {
             thumb={scanThumb}
             error={error}
             onCancel={cancel}
-            onRetry={() => lastJob.current && runJob(lastJob.current.payload, lastJob.current.thumb, lastJob.current.id)}
+            onRetry={() => lastJob.current && runJob(lastJob.current.payload, lastJob.current.thumb, lastJob.current.id, lastJob.current.meta)}
           />
         )}
         {view === 'dossier' && current && (
           <DossierView
             record={current}
+            initialTab={dossierTab}
+            settings={settings}
+            companyContacts={companyContacts}
+            recentEvents={recentEvents}
             crmTargets={health?.crm || []}
             onBack={() => setView('history')}
             onEdit={() => setEditing(true)}
             onRefresh={() => runJob({ card: current.card, refresh: true }, current.thumb, current.id)}
+            onUpdateRecord={(patch) => patchRecord(current.id, patch)}
+            onSelectRecord={(r) => {
+              setCurrentId(r.id);
+              setDossierTab('overview');
+              window.scrollTo({ top: 0 });
+            }}
             onPushCrm={(provider) => pushToCrm(provider, current, settings)}
             onDelete={() => {
               setHistory((h) => h.filter((r) => r.id !== current.id));
@@ -278,8 +355,16 @@ export default function App() {
             history={history}
             canRetry={(id) => pending.current.has(id)}
             onRetry={retryQueued}
-            onOpen={(r) => { setCurrentId(r.id); setView('dossier'); }}
-            onDelete={(id) => { pending.current.delete(id); setHistory((h) => h.filter((r) => r.id !== id)); }}
+            onOpen={(r, tab = 'overview') => {
+              setCurrentId(r.id);
+              setDossierTab(tab);
+              setView('dossier');
+              window.scrollTo({ top: 0 });
+            }}
+            onDelete={(id) => {
+              pending.current.delete(id);
+              setHistory((h) => h.filter((r) => r.id !== id));
+            }}
             onScan={() => setView('scan')}
           />
         )}
@@ -320,7 +405,7 @@ export default function App() {
         <div className="mx-auto grid max-w-xl grid-cols-3">
           {([
             ['scan', 'Scan', ScanLine],
-            ['history', 'Contacts', HistoryIcon],
+            ['history', 'History', HistoryIcon],
             ['settings', 'Settings', SettingsIcon],
           ] as const).map(([id, label, Icon]) => {
             const active = view === id || (id === 'scan' && view === 'processing') || (id === 'history' && view === 'dossier');

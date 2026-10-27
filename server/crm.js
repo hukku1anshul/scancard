@@ -2,16 +2,27 @@
 
 function summaryText(record) {
   const d = record.dossier;
-  if (!d) return '';
   const parts = [
-    d.company?.summary,
-    d.products?.length ? `Products: ${d.products.map((p) => p.name).join(', ')}` : null,
-    d.services?.length ? `Services: ${d.services.map((p) => p.name).join(', ')}` : null,
-    d.targetCustomers?.summary ? `Target customers: ${d.targetCustomers.summary}` : null,
-    d.salesAngle ? `Sales angle: ${d.salesAngle}` : null,
-    d.talkingPoints?.length ? `Talking points:\n- ${d.talkingPoints.join('\n- ')}` : null,
-    d.company?.dunsNumber ? `D-U-N-S: ${d.company.dunsNumber}` : null,
-    d.company?.lei ? `LEI: ${d.company.lei}` : null,
+    record.event ? `Event / Conference: ${record.event}` : null,
+    record.location?.label ? `Location (GPS): ${record.location.label}` : null,
+    record.priority ? `Priority: ${String(record.priority).toUpperCase()}` : null,
+    record.followUpDate ? `Follow-Up Date: ${record.followUpDate}` : null,
+    record.associatedContacts?.length
+      ? `Additional People Spoken To at Company:\n- ${record.associatedContacts
+          .map((c) => `${c.name}${c.role ? ` (${c.role})` : ''}${c.email ? ` · ${c.email}` : ''}${c.phone ? ` · ${c.phone}` : ''}${c.notes ? ` — ${c.notes}` : ''}`)
+          .join('\n- ')}`
+      : null,
+    record.meetingNotes?.length
+      ? `Meeting Notes:\n- ${record.meetingNotes.map((n) => n.text).join('\n- ')}`
+      : null,
+    d?.company?.summary,
+    d?.products?.length ? `Products: ${d.products.map((p) => p.name).join(', ')}` : null,
+    d?.services?.length ? `Services: ${d.services.map((p) => p.name).join(', ')}` : null,
+    d?.targetCustomers?.summary ? `Target customers: ${d.targetCustomers.summary}` : null,
+    d?.salesAngle ? `Sales angle: ${d.salesAngle}` : null,
+    d?.talkingPoints?.length ? `Talking points:\n- ${d.talkingPoints.join('\n- ')}` : null,
+    d?.company?.dunsNumber ? `D-U-N-S: ${d.company.dunsNumber}` : null,
+    d?.company?.lei ? `LEI: ${d.company.lei}` : null,
     'Source: CardIntel business-card scan',
   ];
   return parts.filter(Boolean).join('\n\n');
