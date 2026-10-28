@@ -4,6 +4,7 @@ const HISTORY_KEY = 'cardintel.history.v1';
 const SETTINGS_KEY = 'cardintel.settings.v2';
 
 export const DEFAULT_SETTINGS: Settings = {
+  tenantId: 'default',
   eventMode: false,
   defaultEvent: '',
   autoGeo: true,
@@ -20,6 +21,7 @@ export function loadSettings(): Settings {
   try {
     const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) || localStorage.getItem('cardintel.settings.v1') || '{}');
     return {
+      tenantId: typeof raw.tenantId === 'string' && raw.tenantId.trim() ? raw.tenantId.trim() : DEFAULT_SETTINGS.tenantId,
       eventMode: typeof raw.eventMode === 'boolean' ? raw.eventMode : DEFAULT_SETTINGS.eventMode,
       defaultEvent: typeof raw.defaultEvent === 'string' ? raw.defaultEvent : DEFAULT_SETTINGS.defaultEvent,
       autoGeo: typeof raw.autoGeo === 'boolean' ? raw.autoGeo : DEFAULT_SETTINGS.autoGeo,

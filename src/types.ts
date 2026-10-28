@@ -206,6 +206,7 @@ export interface ScanRecord {
 }
 
 export interface Settings {
+  tenantId?: string;
   eventMode: boolean;
   defaultEvent: string;
   autoGeo: boolean;

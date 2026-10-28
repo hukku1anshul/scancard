@@ -240,7 +240,7 @@ function familyTree(R) {
   return t.ultimateParent || t.parent || t.subsidiaries.length ? t : null;
 }
 
-function buildKycScorecard(card, d, evidence) {
+export function buildKycScorecard(card, d, evidence) {
   const checks = [];
   let score = 20;
   const c = d.company || {};
@@ -347,6 +347,12 @@ function buildKycScorecard(card, d, evidence) {
       label: 'Phone Number Format',
       status: 'warning',
       detail: `Number extracted (${card.phones[0].number}) — verify STD/country code`,
+    });
+  } else {
+    checks.push({
+      label: 'Telecom Reachability',
+      status: 'missing',
+      detail: 'No direct phone or mobile number identified on scan',
     });
   }
 

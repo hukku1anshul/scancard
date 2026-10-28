@@ -8,6 +8,7 @@
     "dev": "concurrently -k -n api,web -c cyan,magenta \"node --watch server/index.js\" \"vite --host\"",
     "dev:https": "concurrently -k -n api,web -c cyan,magenta \"node --watch server/index.js\" \"vite --host --mode https\"",
     "build": "tsc --noEmit && vite build",
+    "test": "node --test test-personas-and-features.js",
     "start": "node server/index.js",
     "server": "node server/index.js"
   },

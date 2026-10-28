@@ -1,8 +1,17 @@
 import type { Card, CrmResult, Health, ScanEvent, ScanMode, ScanRecord, Settings } from '../types';
+import { loadSettings } from './storage';
+
+function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const tenant = loadSettings()?.tenantId || 'default';
+  return {
+    ...extra,
+    'x-tenant-id': tenant,
+  };
+}
 
 export async function fetchHealth(_settings?: Settings): Promise<Health | null> {
   try {
-    const r = await fetch('/api/health');
+    const r = await fetch('/api/health', { headers: authHeaders() });
     return r.ok ? await r.json() : null;
   } catch {
     return null;
@@ -25,7 +34,7 @@ export async function streamScan(
 ): Promise<void> {
   const res = await fetch('/api/scan', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(payload),
     signal,
   });
@@ -53,7 +62,7 @@ export async function pushToCrm(provider: 'hubspot' | 'salesforce', record: Scan
     const { thumb, ...rec } = record; // don't upload image
     const r = await fetch(`/api/crm/${provider}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ record: rec }),
     });
     const d = await r.json().catch(() => ({}));
@@ -68,7 +77,7 @@ export async function pushToCrm(provider: 'hubspot' | 'salesforce', record: Scan
 export async function fetchServerRecords(params: Record<string, string> = {}): Promise<ScanRecord[]> {
   try {
     const qs = new URLSearchParams(params).toString();
-    const r = await fetch(`/api/records${qs ? `?${qs}` : ''}`);
+    const r = await fetch(`/api/records${qs ? `?${qs}` : ''}`, { headers: authHeaders() });
     if (!r.ok) return [];
     const d = await r.json();
     return Array.isArray(d.records) ? d.records : [];
@@ -81,7 +90,7 @@ export async function saveServerRecord(record: ScanRecord): Promise<boolean> {
   try {
     const r = await fetch('/api/records', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ record }),
     });
     return r.ok;
@@ -94,7 +103,7 @@ export async function patchServerRecord(id: string, patch: Partial<ScanRecord>):
   try {
     const r = await fetch(`/api/records/${id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(patch),
     });
     return r.ok;
@@ -105,7 +114,10 @@ export async function patchServerRecord(id: string, patch: Partial<ScanRecord>):
 
 export async function deleteServerRecord(id: string): Promise<boolean> {
   try {
-    const r = await fetch(`/api/records/${id}`, { method: 'DELETE' });
+    const r = await fetch(`/api/records/${id}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
     return r.ok;
   } catch {
     return false;
@@ -116,7 +128,7 @@ export async function syncRecordsWithServer(localRecords: ScanRecord[]): Promise
   try {
     const r = await fetch('/api/records/sync', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ records: localRecords }),
     });
     if (!r.ok) return localRecords;
@@ -138,7 +150,7 @@ export interface AnalyticsData {
 
 export async function fetchAnalytics(): Promise<AnalyticsData | null> {
   try {
-    const r = await fetch('/api/analytics');
+    const r = await fetch('/api/analytics', { headers: authHeaders() });
     return r.ok ? await r.json() : null;
   } catch {
     return null;

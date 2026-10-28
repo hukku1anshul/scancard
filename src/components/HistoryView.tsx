@@ -553,7 +553,7 @@ function CardHistoryItem({
   onFilterEvent?: (ev: string) => void;
 }) {
   const status = r.status || 'done';
-  const openable = status === 'done' || !!r.dossier;
+  const openable = true;
   const companyName = r.dossier?.company.name || r.card.company || r.card.domain || 'Unknown company';
   const locUrl = mapsUrl(r.location);
   const colleaguesCount = r.associatedContacts?.length || 0;
